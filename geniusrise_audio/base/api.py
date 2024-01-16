@@ -149,8 +149,6 @@ class AudioAPI(AudioBulk):
         self.max_memory = max_memory
         self.torchscript = torchscript
         self.compile = compile
-        self.flash_attention = flash_attention
-        self.awq_enabled = awq_enabled
         self.model_args = model_args
         self.username = username
         self.password = password
