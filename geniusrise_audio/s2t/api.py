@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import cherrypy
-from typing import Any
 import torch
 import torchaudio
+from transformers import AutoProcessor, AutoModelForCTC
 from geniusrise import BatchInput, BatchOutput, State
 from geniusrise_audio.base import AudioAPI
 
@@ -27,16 +27,16 @@ class SpeechToTextAPI(AudioAPI):
     It extends the functionality to handle speech-to-text processing using various ASR models.
 
     Attributes:
-        model (Union[Wav2Vec2ForCTC, Any]): The speech-to-text model.
-        processor (Union[Wav2Vec2Processor, Any]): The processor to prepare input audio data for the model.
+        model (AutoModelForCTC): The speech-to-text model.
+        processor (AutoProcessor): The processor to prepare input audio data for the model.
 
     Methods:
         transcribe(audio_input: bytes) -> str:
             Transcribes the given audio input to text using the speech-to-text model.
     """
 
-    model: Any
-    processor: Any
+    model: AutoModelForCTC
+    processor: AutoProcessor
 
     def __init__(
         self,
