@@ -6,6 +6,7 @@ argparse-color-formatter==1.2.2.post2
 argparse-manpage==4.4
 async-timeout==4.0.3
 attrs==23.1.0
+autocommand==2.2.2
 black==23.7.0
 bleach==6.0.0
 boto3==1.28.25
@@ -15,6 +16,8 @@ cachetools==5.3.1
 certifi==2023.7.22
 cffi==1.15.1
 charset-normalizer==3.2.0
+cheroot==10.0.0
+CherryPy==18.9.0
 click==8.1.7
 colorama==0.4.6
 colorlog==6.7.0
@@ -37,8 +40,13 @@ GPUtil==1.4.0
 huggingface-hub==0.17.3
 idna==3.4
 importlib-metadata==6.8.0
+inflect==7.0.0
 iniconfig==2.0.0
 jaraco.classes==3.3.0
+jaraco.collections==5.0.0
+jaraco.context==4.3.0
+jaraco.functools==4.0.0
+jaraco.text==3.12.0
 jeepney==0.8.0
 jmespath==0.10.0
 jsonpickle==3.0.1
@@ -61,6 +69,7 @@ pathspec==0.11.2
 pkginfo==1.9.6
 platformdirs==3.10.0
 pluggy==1.2.0
+portend==3.2.0
 prettytable==3.8.0
 prometheus-client==0.17.1
 psutil==5.9.5
@@ -95,6 +104,7 @@ safetensors==0.4.0
 SecretStorage==3.3.3
 shortuuid==1.0.11
 six==1.16.0
+tempora==5.5.0
 termcolor==2.3.0
 tokenizers==0.14.1
 tomli==2.0.1
@@ -110,4 +120,5 @@ webencodings==0.5.1
 websocket-client==1.6.1
 xxhash==3.4.1
 yarl==1.9.2
+zc.lockfile==3.0.post1
 zipp==3.16.2

@@ -42,13 +42,13 @@ class AudioAPI(AudioBulk):
 
     Attributes:
         model (Any): The pre-trained language model.
-        tokenizer (Any): The tokenizer used to preprocess input text.
+        processor (Any): The processor used to preprocess input text.
         model_name (str): The name of the pre-trained language model.
         model_revision (Optional[str]): The revision of the pre-trained language model.
-        tokenizer_name (str): The name of the tokenizer used to preprocess input text.
-        feature_extractor_revision (Optional[str]): The revision of the tokenizer used to preprocess input text.
+        processor_name (str): The name of the processor used to preprocess input text.
+        processor_revision (Optional[str]): The revision of the processor used to preprocess input text.
         model_class (str): The name of the class of the pre-trained language model.
-        feature_extractor_class (str): The name of the class of the tokenizer used to preprocess input text.
+        processor_class (str): The name of the class of the processor used to preprocess input text.
         use_cuda (bool): Whether to use a GPU for inference.
         quantization (int): The level of quantization to use for the pre-trained language model.
         precision (str): The precision to use for the pre-trained language model.
@@ -61,12 +61,12 @@ class AudioAPI(AudioBulk):
         text(**kwargs: Any) -> Dict[str, Any]:
             Generates text based on the given prompt and decoding strategy.
 
-        listen(model_name: str, model_class: str = "AutoModelForCausalLM", feature_extractor_class: str = "AutoTokenizer", use_cuda: bool = False, precision: str = "float16", quantization: int = 0, device_map: str | Dict | None = "auto", max_memory={0: "24GB"}, torchscript: bool = True, endpoint: str = "*", port: int = 3000, cors_domain: str = "http://localhost:3000", username: Optional[str] = None, password: Optional[str] = None, **model_args: Any) -> None:
+        listen(model_name: str, model_class: str = "AutoModelForCausalLM", processor_class: str = "Autoprocessor", use_cuda: bool = False, precision: str = "float16", quantization: int = 0, device_map: str | Dict | None = "auto", max_memory={0: "24GB"}, torchscript: bool = True, endpoint: str = "*", port: int = 3000, cors_domain: str = "http://localhost:3000", username: Optional[str] = None, password: Optional[str] = None, **model_args: Any) -> None:
             Starts a CherryPy server to listen for requests to generate text.
     """
 
     model: Any
-    tokenizer: Any
+    processor: Any
 
     def __init__(
         self,
@@ -103,7 +103,7 @@ class AudioAPI(AudioBulk):
         self,
         model_name: str,
         model_class: str = "AutoModel",
-        feature_extractor_class: str = "AutoFeatureExtractor",
+        processor_class: str = "AutoFeatureExtractor",
         use_cuda: bool = False,
         precision: str = "float16",
         quantization: int = 0,
@@ -124,7 +124,7 @@ class AudioAPI(AudioBulk):
         Args:
             model_name (str): The name of the pre-trained language model.
             model_class (str, optional): The name of the class of the pre-trained language model. Defaults to "AutoModelForCausalLM".
-            feature_extractor_class (str, optional): The name of the class of the tokenizer used to preprocess input text. Defaults to "AutoTokenizer".
+            processor_class (str, optional): The name of the class of the processor used to preprocess input text. Defaults to "Autoprocessor".
             use_cuda (bool, optional): Whether to use a GPU for inference. Defaults to False.
             precision (str, optional): The precision to use for the pre-trained language model. Defaults to "float16".
             quantization (int, optional): The level of quantization to use for the pre-trained language model. Defaults to 0.
@@ -141,7 +141,7 @@ class AudioAPI(AudioBulk):
         """
         self.model_name = model_name
         self.model_class = model_class
-        self.feature_extractor_class = feature_extractor_class
+        self.processor_class = processor_class
         self.use_cuda = use_cuda
         self.quantization = quantization
         self.precision = precision
@@ -155,25 +155,25 @@ class AudioAPI(AudioBulk):
 
         if ":" in model_name:
             model_revision = model_name.split(":")[1]
-            feature_extractor_revision = model_name.split(":")[1]
+            processor_revision = model_name.split(":")[1]
             model_name = model_name.split(":")[0]
-            feature_extractor_name = model_name
+            processor_name = model_name
         else:
             model_revision = None
-            feature_extractor_revision = None
-        feature_extractor_name = model_name
+            processor_revision = None
+        processor_name = model_name
         self.model_name = model_name
         self.model_revision = model_revision
-        self.feature_extractor_name = feature_extractor_name
-        self.feature_extractor_revision = feature_extractor_revision
+        self.processor_name = processor_name
+        self.processor_revision = processor_revision
 
-        self.model, self.tokenizer = self.load_models(
+        self.model, self.processor = self.load_models(
             model_name=self.model_name,
-            feature_extractor_name=self.feature_extractor_name,
+            processor_name=self.processor_name,
             model_revision=self.model_revision,
-            feature_extractor_revision=self.feature_extractor_revision,
+            processor_revision=self.processor_revision,
             model_class=self.model_class,
-            feature_extractor_class=self.feature_extractor_class,
+            processor_class=self.processor_class,
             use_cuda=self.use_cuda,
             precision=self.precision,
             quantization=self.quantization,

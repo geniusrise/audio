@@ -12,3 +12,108 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import cherrypy
+from typing import Any
+import torch
+from geniusrise import BatchInput, BatchOutput, State
+from geniusrise_audio.base import AudioAPI
+
+
+class SpeechToTextAPI(AudioAPI):
+    """
+    SpeechToTextAPI is a subclass of AudioAPI specifically designed for speech-to-text models.
+    It extends the functionality to handle speech-to-text processing using various ASR models.
+
+    Attributes:
+        model (Union[Wav2Vec2ForCTC, Any]): The speech-to-text model.
+        processor (Union[Wav2Vec2Processor, Any]): The processor to prepare input audio data for the model.
+
+    Methods:
+        transcribe(audio_input: bytes) -> str:
+            Transcribes the given audio input to text using the speech-to-text model.
+    """
+
+    model: Any
+    processor: Any
+
+    def __init__(
+        self,
+        input: BatchInput,
+        output: BatchOutput,
+        state: State,
+        model_name: str,
+        **kwargs,
+    ):
+        """
+        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
+
+        Args:
+            input (BatchInput): The input data configuration.
+            output (BatchOutput): The output data configuration.
+            state (State): The state configuration.
+            **kwargs: Additional keyword arguments.
+        """
+        super().__init__(input=input, output=output, state=state, **kwargs)
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    @cherrypy.tools.json_in()
+    def transcribe(self):
+        """
+        API endpoint to transcribe the given audio input to text using the speech-to-text model.
+        Expects a JSON input with 'audio_file' as a key containing the base64 encoded audio data.
+
+        Returns:
+            Dict[str, str]: A dictionary containing the transcribed text.
+        """
+        input_json = cherrypy.request.json
+        audio_data = input_json.get("audio_file")
+
+        if not audio_data:
+            raise cherrypy.HTTPError(400, "No audio data provided.")
+
+        # Convert base64 encoded data to bytes
+        audio_input = self.decode_audio(audio_data)
+
+        # Preprocess and transcribe
+        transcription = self.process_transcription(audio_input)
+
+        return {"transcription": transcription}
+
+    def decode_audio(self, audio_data: str) -> bytes:
+        """
+        Decodes the base64 encoded audio data to bytes.
+
+        Args:
+            audio_data (str): Base64 encoded audio data.
+
+        Returns:
+            bytes: Decoded audio data.
+        """
+        import base64
+
+        return base64.b64decode(audio_data)
+
+    def process_transcription(self, audio_input: bytes) -> str:
+        """
+        Processes the audio input and transcribes it using the loaded model.
+
+        Args:
+            audio_input (bytes): The audio input in bytes.
+
+        Returns:
+            str: The transcribed text.
+        """
+        # Preprocess the audio input based on the model's requirements
+        input_values = self.processor(audio_input, return_tensors="pt", sampling_rate=16000).input_values
+
+        # Perform inference
+        with torch.no_grad():
+            logits = self.model(input_values).logits
+
+        # Decode the model output
+        predicted_ids = torch.argmax(logits, dim=-1)
+        transcription = self.processor.decode(predicted_ids[0])
+
+        return transcription
