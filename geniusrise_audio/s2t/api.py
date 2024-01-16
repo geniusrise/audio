@@ -16,6 +16,7 @@
 import cherrypy
 from typing import Any
 import torch
+import torchaudio
 from geniusrise import BatchInput, BatchOutput, State
 from geniusrise_audio.base import AudioAPI
 
@@ -68,16 +69,33 @@ class SpeechToTextAPI(AudioAPI):
             Dict[str, str]: A dictionary containing the transcribed text.
         """
         input_json = cherrypy.request.json
-        audio_data = input_json.get("audio_file")
+        audio_data = input_json.get("audio_file")  # fix this, this has to be multi-part
+        input_sampling_rate = input_json.get("input_sampling_rate")
+        model_sampling_rate = input_json.get("model_sampling_rate")
+        processor_args = input_json.get("processor_args")
+        generate_args = input_json.get("generate_args")
 
         if not audio_data:
             raise cherrypy.HTTPError(400, "No audio data provided.")
 
         # Convert base64 encoded data to bytes
         audio_input = self.decode_audio(audio_data)
+        audio_input = torchaudio.functional.resample(
+            audio_input, orig_freq=input_sampling_rate, new_freq=model_sampling_rate
+        )
 
         # Preprocess and transcribe
-        transcription = self.process_transcription(audio_input)
+        input_values = self.processor(
+            audio_input, return_tensors="pt", sampling_rate=model_sampling_rate, **processor_args
+        ).input_values
+
+        # Perform inference
+        with torch.no_grad():
+            logits = self.model.generate(input_values, **generate_args).logits
+
+        # Decode the model output
+        predicted_ids = torch.argmax(logits, dim=-1)
+        transcription = self.processor.decode(predicted_ids[0])
 
         return {"transcription": transcription}
 
@@ -94,26 +112,3 @@ class SpeechToTextAPI(AudioAPI):
         import base64
 
         return base64.b64decode(audio_data)
-
-    def process_transcription(self, audio_input: bytes) -> str:
-        """
-        Processes the audio input and transcribes it using the loaded model.
-
-        Args:
-            audio_input (bytes): The audio input in bytes.
-
-        Returns:
-            str: The transcribed text.
-        """
-        # Preprocess the audio input based on the model's requirements
-        input_values = self.processor(audio_input, return_tensors="pt", sampling_rate=16000).input_values
-
-        # Perform inference
-        with torch.no_grad():
-            logits = self.model(input_values).logits
-
-        # Decode the model output
-        predicted_ids = torch.argmax(logits, dim=-1)
-        transcription = self.processor.decode(predicted_ids[0])
-
-        return transcription
