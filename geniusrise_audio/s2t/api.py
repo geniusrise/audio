@@ -70,10 +70,10 @@ class SpeechToTextAPI(AudioAPI):
         """
         input_json = cherrypy.request.json
         audio_data = input_json.get("audio_file")
-        input_sampling_rate = input_json.get("input_sampling_rate")
-        model_sampling_rate = input_json.get("model_sampling_rate")
-        processor_args = input_json.get("processor_args")
-        generate_args = input_json.get("generate_args")
+        input_sampling_rate = input_json.get("input_sampling_rate", 48_000)
+        model_sampling_rate = input_json.get("model_sampling_rate", 16_000)
+        processor_args = input_json.get("processor_args", {})
+        generate_args = input_json.get("generate_args", {})
 
         if not audio_data:
             raise cherrypy.HTTPError(400, "No audio data provided.")
