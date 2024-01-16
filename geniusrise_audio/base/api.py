@@ -46,9 +46,9 @@ class AudioAPI(AudioBulk):
         model_name (str): The name of the pre-trained language model.
         model_revision (Optional[str]): The revision of the pre-trained language model.
         tokenizer_name (str): The name of the tokenizer used to preprocess input text.
-        tokenizer_revision (Optional[str]): The revision of the tokenizer used to preprocess input text.
+        feature_extractor_revision (Optional[str]): The revision of the tokenizer used to preprocess input text.
         model_class (str): The name of the class of the pre-trained language model.
-        tokenizer_class (str): The name of the class of the tokenizer used to preprocess input text.
+        feature_extractor_class (str): The name of the class of the tokenizer used to preprocess input text.
         use_cuda (bool): Whether to use a GPU for inference.
         quantization (int): The level of quantization to use for the pre-trained language model.
         precision (str): The precision to use for the pre-trained language model.
@@ -61,7 +61,7 @@ class AudioAPI(AudioBulk):
         text(**kwargs: Any) -> Dict[str, Any]:
             Generates text based on the given prompt and decoding strategy.
 
-        listen(model_name: str, model_class: str = "AutoModelForCausalLM", tokenizer_class: str = "AutoTokenizer", use_cuda: bool = False, precision: str = "float16", quantization: int = 0, device_map: str | Dict | None = "auto", max_memory={0: "24GB"}, torchscript: bool = True, endpoint: str = "*", port: int = 3000, cors_domain: str = "http://localhost:3000", username: Optional[str] = None, password: Optional[str] = None, **model_args: Any) -> None:
+        listen(model_name: str, model_class: str = "AutoModelForCausalLM", feature_extractor_class: str = "AutoTokenizer", use_cuda: bool = False, precision: str = "float16", quantization: int = 0, device_map: str | Dict | None = "auto", max_memory={0: "24GB"}, torchscript: bool = True, endpoint: str = "*", port: int = 3000, cors_domain: str = "http://localhost:3000", username: Optional[str] = None, password: Optional[str] = None, **model_args: Any) -> None:
             Starts a CherryPy server to listen for requests to generate text.
     """
 
@@ -85,51 +85,6 @@ class AudioAPI(AudioBulk):
         super().__init__(input=input, output=output, state=state)
         self.log = setup_logger(self)
 
-    @cherrypy.expose
-    @cherrypy.tools.json_in()
-    @cherrypy.tools.json_out()
-    @cherrypy.tools.allow(methods=["POST"])
-    def text(self, **kwargs: Any) -> Dict[str, Any]:
-        """
-        Generates text based on the given prompt and decoding strategy.
-
-        Args:
-            **kwargs (Any): Additional arguments to pass to the pre-trained language model.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing the prompt, arguments, and generated text.
-        """
-        data = cherrypy.request.json
-        prompt = data.get("prompt")
-        decoding_strategy = data.get("decoding_strategy", "generate")
-
-        max_new_tokens = data.get("max_new_tokens")
-        max_length = data.get("max_length")
-        temperature = data.get("temperature")
-        diversity_penalty = data.get("diversity_penalty")
-        num_beams = data.get("num_beams")
-        length_penalty = data.get("length_penalty")
-        early_stopping = data.get("early_stopping")
-
-        others = data.__dict__
-
-        return {
-            "prompt": prompt,
-            "args": others,
-            "completion": self.generate(
-                prompt=prompt,
-                decoding_strategy=decoding_strategy,
-                max_new_tokens=max_new_tokens,
-                max_length=max_length,
-                temperature=temperature,
-                diversity_penalty=diversity_penalty,
-                num_beams=num_beams,
-                length_penalty=length_penalty,
-                early_stopping=early_stopping,
-                **others,
-            ),
-        }
-
     def validate_password(self, realm, username, password):
         """
         Validate the username and password against expected values.
@@ -147,16 +102,15 @@ class AudioAPI(AudioBulk):
     def listen(
         self,
         model_name: str,
-        model_class: str = "AutoModelForCausalLM",
-        tokenizer_class: str = "AutoTokenizer",
+        model_class: str = "AutoModel",
+        feature_extractor_class: str = "AutoFeatureExtractor",
         use_cuda: bool = False,
         precision: str = "float16",
         quantization: int = 0,
         device_map: str | Dict | None = "auto",
         max_memory={0: "24GB"},
-        torchscript: bool = True,
-        awq_enabled: bool = False,
-        flash_attention: bool = False,
+        torchscript: bool = False,
+        compile: bool = True,
         endpoint: str = "*",
         port: int = 3000,
         cors_domain: str = "http://localhost:3000",
@@ -170,15 +124,14 @@ class AudioAPI(AudioBulk):
         Args:
             model_name (str): The name of the pre-trained language model.
             model_class (str, optional): The name of the class of the pre-trained language model. Defaults to "AutoModelForCausalLM".
-            tokenizer_class (str, optional): The name of the class of the tokenizer used to preprocess input text. Defaults to "AutoTokenizer".
+            feature_extractor_class (str, optional): The name of the class of the tokenizer used to preprocess input text. Defaults to "AutoTokenizer".
             use_cuda (bool, optional): Whether to use a GPU for inference. Defaults to False.
             precision (str, optional): The precision to use for the pre-trained language model. Defaults to "float16".
             quantization (int, optional): The level of quantization to use for the pre-trained language model. Defaults to 0.
             device_map (str | Dict | None, optional): The mapping of devices to use for inference. Defaults to "auto".
             max_memory (Dict[int, str], optional): The maximum memory to use for inference. Defaults to {0: "24GB"}.
             torchscript (bool, optional): Whether to use a TorchScript-optimized version of the pre-trained language model. Defaults to True.
-            awq_enabled (bool): Whether to use AWQ for model optimization. Default is False.
-            flash_attention (bool): Whether to use flash attention 2. Default is False.
+            compile (bool): Enable Torch JIT compilation.
             endpoint (str, optional): The endpoint to listen on. Defaults to "*".
             port (int, optional): The port to listen on. Defaults to 3000.
             cors_domain (str, optional): The domain to allow CORS requests from. Defaults to "http://localhost:3000".
@@ -188,13 +141,14 @@ class AudioAPI(AudioBulk):
         """
         self.model_name = model_name
         self.model_class = model_class
-        self.tokenizer_class = tokenizer_class
+        self.feature_extractor_class = feature_extractor_class
         self.use_cuda = use_cuda
         self.quantization = quantization
         self.precision = precision
         self.device_map = device_map
         self.max_memory = max_memory
         self.torchscript = torchscript
+        self.compile = compile
         self.flash_attention = flash_attention
         self.awq_enabled = awq_enabled
         self.model_args = model_args
@@ -203,33 +157,32 @@ class AudioAPI(AudioBulk):
 
         if ":" in model_name:
             model_revision = model_name.split(":")[1]
-            tokenizer_revision = model_name.split(":")[1]
+            feature_extractor_revision = model_name.split(":")[1]
             model_name = model_name.split(":")[0]
-            tokenizer_name = model_name
+            feature_extractor_name = model_name
         else:
             model_revision = None
-            tokenizer_revision = None
-        tokenizer_name = model_name
+            feature_extractor_revision = None
+        feature_extractor_name = model_name
         self.model_name = model_name
         self.model_revision = model_revision
-        self.tokenizer_name = tokenizer_name
-        self.tokenizer_revision = tokenizer_revision
+        self.feature_extractor_name = feature_extractor_name
+        self.feature_extractor_revision = feature_extractor_revision
 
         self.model, self.tokenizer = self.load_models(
             model_name=self.model_name,
-            tokenizer_name=self.tokenizer_name,
+            feature_extractor_name=self.feature_extractor_name,
             model_revision=self.model_revision,
-            tokenizer_revision=self.tokenizer_revision,
+            feature_extractor_revision=self.feature_extractor_revision,
             model_class=self.model_class,
-            tokenizer_class=self.tokenizer_class,
+            feature_extractor_class=self.feature_extractor_class,
             use_cuda=self.use_cuda,
             precision=self.precision,
             quantization=self.quantization,
             device_map=self.device_map,
             max_memory=self.max_memory,
             torchscript=self.torchscript,
-            awq_enabled=self.awq_enabled,
-            flash_attention=self.flash_attention,
+            compile=self.compile,
             **self.model_args,
         )
 

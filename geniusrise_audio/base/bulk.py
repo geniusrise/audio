@@ -68,7 +68,8 @@ class AudioBulk(Bolt):
         quantization: int = 0,
         device_map: Union[str, Dict, None] = "auto",
         max_memory: Dict[int, str] = {0: "24GB"},
-        torchscript: bool = True,
+        torchscript: bool = False,
+        compile: bool = True,
         **model_args: Any,
     ) -> Tuple[AutoModelForAudioClassification, AutoFeatureExtractor]:
         """
@@ -87,6 +88,7 @@ class AudioBulk(Bolt):
             device_map (Union[str, Dict, None]): Specific device(s) for model operations.
             max_memory (Dict[int, str]): Maximum memory allocation for the model.
             torchscript (bool): Enable TorchScript for model optimization.
+            compile (bool): Enable Torch JIT compilation.
             **model_args (Any): Additional arguments for model loading.
 
         Returns:
@@ -138,6 +140,9 @@ class AudioBulk(Bolt):
                 device_map=device_map,
                 **model_args,
             )
+
+        if compile:
+            model = torch.compile(model)
 
         # Set to evaluation mode for inference
         model.eval()
