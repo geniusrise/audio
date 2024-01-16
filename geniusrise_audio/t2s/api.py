@@ -13,14 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cherrypy
-import torch
-from transformers import AutoProcessor, AutoModelForConditionalGeneration
-from geniusrise import BatchInput, BatchOutput, State
-from geniusrise_audio.base import AudioAPI
 import base64
 import io
+
+import cherrypy
+import torch
+from geniusrise import BatchInput, BatchOutput, State
 from pydub import AudioSegment
+from transformers import AutoModelForConditionalGeneration, AutoProcessor
+
+from geniusrise_audio.base import AudioAPI
 
 
 class TextToSpeechAPI(AudioAPI):

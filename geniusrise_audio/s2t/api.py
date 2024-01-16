@@ -16,8 +16,9 @@
 import cherrypy
 import torch
 import torchaudio
-from transformers import AutoProcessor, AutoModelForCTC
 from geniusrise import BatchInput, BatchOutput, State
+from transformers import AutoModelForCTC, AutoProcessor
+
 from geniusrise_audio.base import AudioAPI
 
 

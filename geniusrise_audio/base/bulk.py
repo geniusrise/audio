@@ -19,7 +19,8 @@ import torch
 import transformers
 from geniusrise import BatchInput, BatchOutput, Bolt, State
 from geniusrise.logging import setup_logger
-from transformers import AutoModelForAudioClassification, AutoFeatureExtractor, Autoprocessor
+from transformers import AutoFeatureExtractor, AutoModelForAudioClassification, Autoprocessor
+
 from geniusrise_audio.base.communication import send_email
 
 

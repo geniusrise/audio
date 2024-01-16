@@ -13,16 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, List, Union
+import glob
 import json
 import os
-import glob
-import torchaudio
 import uuid
+from typing import Any, Dict, List, Optional, Union
+
 import torch
+import torchaudio
 from geniusrise import BatchInput, BatchOutput, State
-from geniusrise_audio.base import AudioBulk
 from transformers import AutoModelForCTC, AutoProcessor
+
+from geniusrise_audio.base import AudioBulk
 
 
 class SpeechToTextBulk(AudioBulk):

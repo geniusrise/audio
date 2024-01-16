@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import json
 from unittest import mock
-from geniusrise import State, StreamingOutput, InMemoryState
-from geniusrise_audio.socketio import (
-    SocketIo,
-)
+
+import pytest
+from geniusrise import InMemoryState, State, StreamingOutput
+
+from geniusrise_audio.socketio import SocketIo
 
 
 @pytest.fixture
