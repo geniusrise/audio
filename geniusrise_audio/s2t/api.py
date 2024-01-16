@@ -69,7 +69,7 @@ class SpeechToTextAPI(AudioAPI):
             Dict[str, str]: A dictionary containing the transcribed text.
         """
         input_json = cherrypy.request.json
-        audio_data = input_json.get("audio_file")  # fix this, this has to be multi-part
+        audio_data = input_json.get("audio_file")
         input_sampling_rate = input_json.get("input_sampling_rate")
         model_sampling_rate = input_json.get("model_sampling_rate")
         processor_args = input_json.get("processor_args")
