@@ -13,21 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional
+import glob
 import json
 import os
-from geniusrise import BatchInput, BatchOutput, State
-from geniusrise_audio.base import AudioBulk, send_email
-from transformers import AutoModelForCTC, AutoProcessor
-from datasets import Dataset, load_from_disk
-import pandas as pd
-import yaml  # type: ignore
-import glob
 import sqlite3
 import xml.etree.ElementTree as ET
-from pyarrow import feather, parquet as pq
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 import torchaudio
+import yaml  # type: ignore
+from datasets import Dataset, load_from_disk
+from geniusrise import BatchInput, BatchOutput, State
+from pyarrow import feather
+from pyarrow import parquet as pq
 from torch import Tensor
+from transformers import AutoModelForCTC, AutoProcessor
+
+from geniusrise_audio.base import AudioBulk, send_email
 
 
 class TextToSpeechBulk(AudioBulk):
