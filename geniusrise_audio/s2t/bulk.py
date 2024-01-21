@@ -17,7 +17,7 @@ import glob
 import json
 import os
 import uuid
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import torch
 import torchaudio
@@ -132,7 +132,7 @@ class SpeechToTextBulk(AudioBulk):
         Args:
             model_name (str): Name or path of the model.
             model_class (str): Class name of the model (default "AutoModelForSequenceClassification").
-            processor_class (str): Class name of the processor (default "Autoprocessor").
+            processor_class (str): Class name of the processor (default "AutoProcessor").
             use_cuda (bool): Whether to use CUDA for model inference (default False).
             precision (str): Precision for model computation (default "float").
             quantization (int): Level of quantization for optimizing model size and speed (default 0).
@@ -241,7 +241,7 @@ class SpeechToTextBulk(AudioBulk):
 
         return transcriptions
 
-    def _load_audio(self, file_path: str) -> torchaudio.tensor:
+    def _load_audio(self, file_path: str) -> Tuple[torch.Tensor, int]:
         """
             Loads an audio file and preprocesses it for the speech-to-text model.
         Args:

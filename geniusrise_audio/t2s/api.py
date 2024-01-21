@@ -20,7 +20,7 @@ import cherrypy
 import torch
 from geniusrise import BatchInput, BatchOutput, State
 from pydub import AudioSegment
-from transformers import AutoModelForConditionalGeneration, AutoProcessor
+from transformers import AutoModel, AutoProcessor
 
 from geniusrise_audio.base import AudioAPI
 
@@ -35,7 +35,7 @@ class TextToSpeechAPI(AudioAPI):
         processor (AutoProcessor): The processor to prepare input audio data for the model.
     """
 
-    model: AutoModelForConditionalGeneration
+    model: AutoModel
     processor: AutoProcessor
 
     def __init__(

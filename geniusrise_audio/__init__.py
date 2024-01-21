@@ -12,3 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from .base import AudioAPI, AudioBulk, send_email, send_fine_tuning_email
+
+from .s2t import SpeechToTextAPI, SpeechToTextBulk
+from .t2s import TextToSpeechAPI, TextToSpeechBulk

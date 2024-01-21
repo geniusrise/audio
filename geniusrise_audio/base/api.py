@@ -62,7 +62,7 @@ class AudioAPI(AudioBulk):
         text(**kwargs: Any) -> Dict[str, Any]:
             Generates text based on the given prompt and decoding strategy.
 
-        listen(model_name: str, model_class: str = "AutoModelForCausalLM", processor_class: str = "Autoprocessor", use_cuda: bool = False, precision: str = "float16", quantization: int = 0, device_map: str | Dict | None = "auto", max_memory={0: "24GB"}, torchscript: bool = True, endpoint: str = "*", port: int = 3000, cors_domain: str = "http://localhost:3000", username: Optional[str] = None, password: Optional[str] = None, **model_args: Any) -> None:
+        listen(model_name: str, model_class: str = "AutoModelForCausalLM", processor_class: str = "AutoProcessor", use_cuda: bool = False, precision: str = "float16", quantization: int = 0, device_map: str | Dict | None = "auto", max_memory={0: "24GB"}, torchscript: bool = True, endpoint: str = "*", port: int = 3000, cors_domain: str = "http://localhost:3000", username: Optional[str] = None, password: Optional[str] = None, **model_args: Any) -> None:
             Starts a CherryPy server to listen for requests to generate text.
     """
 
@@ -104,7 +104,7 @@ class AudioAPI(AudioBulk):
         self,
         model_name: str,
         model_class: str = "AutoModel",
-        processor_class: str = "AutoFeatureExtractor",
+        processor_class: str = "AutoProcessor",
         use_cuda: bool = False,
         precision: str = "float16",
         quantization: int = 0,
@@ -125,7 +125,7 @@ class AudioAPI(AudioBulk):
         Args:
             model_name (str): The name of the pre-trained language model.
             model_class (str, optional): The name of the class of the pre-trained language model. Defaults to "AutoModelForCausalLM".
-            processor_class (str, optional): The name of the class of the processor used to preprocess input text. Defaults to "Autoprocessor".
+            processor_class (str, optional): The name of the class of the processor used to preprocess input text. Defaults to "AutoProcessor".
             use_cuda (bool, optional): Whether to use a GPU for inference. Defaults to False.
             precision (str, optional): The precision to use for the pre-trained language model. Defaults to "float16".
             quantization (int, optional): The level of quantization to use for the pre-trained language model. Defaults to 0.

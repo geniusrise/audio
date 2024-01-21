@@ -19,7 +19,7 @@ import torch
 import transformers
 from geniusrise import BatchInput, BatchOutput, Bolt, State
 from geniusrise.logging import setup_logger
-from transformers import AutoFeatureExtractor, AutoModelForAudioClassification, Autoprocessor
+from transformers import AutoFeatureExtractor, AutoModelForAudioClassification, AutoProcessor
 
 from geniusrise_audio.base.communication import send_email
 
@@ -31,7 +31,7 @@ class AudioBulk(Bolt):
 
     Attributes:
         model (AutoModelForAudioClassification): The audio model for generation or transformation tasks.
-        processor (AutoFeatureExtractor): The feature extractor for preparing input data for the model.
+        processor (AutoFeatureExtractor): The processor for preparing input data for the model.
 
     Args:
         input (BatchInput): Configuration and data inputs for the batch process.
@@ -49,7 +49,7 @@ class AudioBulk(Bolt):
     """
 
     model: AutoModelForAudioClassification
-    processor: AutoFeatureExtractor | Autoprocessor
+    processor: AutoFeatureExtractor | AutoProcessor
 
     def __init__(
         self,
@@ -89,15 +89,15 @@ class AudioBulk(Bolt):
         **model_args: Any,
     ) -> Tuple[AutoModelForAudioClassification, AutoFeatureExtractor]:
         """
-        Loads and configures the specified audio model and feature extractor for audio processing.
+        Loads and configures the specified audio model and processor for audio processing.
 
         Args:
             model_name (str): Name or path of the audio model to load.
-            processor_name (str): Name or path of the feature extractor to load.
+            processor_name (str): Name or path of the processor to load.
             model_revision (Optional[str]): Specific model revision to load (e.g., commit hash).
-            processor_revision (Optional[str]): Specific feature extractor revision to load.
+            processor_revision (Optional[str]): Specific processor revision to load.
             model_class (str): Class of the model to be loaded.
-            processor_class (str): Class of the feature extractor to be loaded.
+            processor_class (str): Class of the processor to be loaded.
             use_cuda (bool): Flag to use CUDA for GPU acceleration.
             precision (str): Desired precision for computations ("float32", "float16", etc.).
             quantization (int): Bit level for model quantization (0 for none, 8 for 8-bit).
@@ -108,7 +108,7 @@ class AudioBulk(Bolt):
             **model_args (Any): Additional arguments for model loading.
 
         Returns:
-            Tuple[AutoModelForAudioClassification, AutoFeatureExtractor]: Loaded model and feature extractor.
+            Tuple[AutoModelForAudioClassification, AutoFeatureExtractor]: Loaded model and processor.
         """
         self.log.info(f"Loading audio model: {model_name}")
 
@@ -119,7 +119,7 @@ class AudioBulk(Bolt):
         if use_cuda and not device_map:
             device_map = "auto"
 
-        # Load the model and feature extractor
+        # Load the model and processor
         FeatureExtractorClass = getattr(transformers, processor_class)
         processor = FeatureExtractorClass.from_pretrained(
             processor_name, revision=processor_revision, torch_dtype=torch_dtype
@@ -163,7 +163,7 @@ class AudioBulk(Bolt):
         # Set to evaluation mode for inference
         model.eval()
 
-        self.log.debug("Audio model and feature extractor loaded successfully.")
+        self.log.debug("Audio model and processor loaded successfully.")
         return model, processor
 
     def _get_torch_dtype(self, precision: str) -> torch.dtype:
