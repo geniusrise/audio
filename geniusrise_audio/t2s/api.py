@@ -43,7 +43,6 @@ class TextToSpeechAPI(AudioAPI):
         input: BatchInput,
         output: BatchOutput,
         state: State,
-        model_name: str,
         **kwargs,
     ):
         """

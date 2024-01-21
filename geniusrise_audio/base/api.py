@@ -74,6 +74,7 @@ class AudioAPI(AudioBulk):
         input: BatchInput,
         output: BatchOutput,
         state: State,
+        **kwargs,
     ):
         """
         Initializes a new instance of the TextAPI class.
