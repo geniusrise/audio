@@ -20,6 +20,9 @@ import cherrypy
 import torch
 import torchaudio
 from typing import Tuple
+import soundfile as sf
+import librosa
+import numpy as np
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor
 
@@ -88,9 +91,8 @@ class SpeechToTextAPI(AudioAPI):
             raise cherrypy.HTTPError(400, "No audio data provided.")
 
         # Convert base64 encoded data to bytes
-        audio_input, input_sampling_rate = self.decode_audio(audio_data)
-        audio_input = torchaudio.functional.resample(
-            audio_input, orig_freq=input_sampling_rate, new_freq=model_sampling_rate
+        audio_input, input_sampling_rate = self.decode_audio(
+            audio_data, self.model.config.model_type, model_sampling_rate
         )
 
         # Perform inference
@@ -140,12 +142,11 @@ class SpeechToTextAPI(AudioAPI):
         """
         # TensorFloat32 tensor cores for float32 matrix multiplication availabl
         torch.set_float32_matmul_precision("high")
+        audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
         if chunk_size > 0:
-            chunks = [
-                audio_input[:, i : i + chunk_size] for i in range(0, audio_input.shape[1], chunk_size - overlap_size)
-            ]
+            chunks = [audio_input[i : i + chunk_size] for i in range(0, len(audio_input), chunk_size - overlap_size)]
         else:
             chunks = [audio_input]
 
@@ -154,7 +155,7 @@ class SpeechToTextAPI(AudioAPI):
             print(chunk.shape)
 
             processed = self.processor(
-                chunk.squeeze(0),
+                chunk,
                 return_tensors="pt",
                 sampling_rate=model_sampling_rate,
                 truncation=False,
@@ -174,22 +175,23 @@ class SpeechToTextAPI(AudioAPI):
                 logits = self.model(input_values).logits
 
             print(logits.shape)
-            predicted_ids = torch.argmax(logits[0], dim=-1)
+            predicted_ids = torch.argmax(logits, dim=-1)
 
             # Decode each chunk
-            chunk_transcription = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)
-            transcriptions.append(chunk_transcription[0])
-            print(chunk_transcription)
+            chunk_transcription = self.processor.decode(predicted_ids[0], skip_special_tokens=True)
+            transcriptions.append(chunk_transcription)
+            print(chunk_transcription.strip())
 
         return " ".join(transcriptions)
 
-    def decode_audio(self, audio_data: str) -> Tuple[torch.Tensor, int]:
+    def decode_audio(self, audio_data: str, model_type: str, model_sampling_rate: int) -> Tuple[torch.Tensor, int]:
         """
         Decodes the base64 encoded audio data to bytes, determines its sampling rate,
-        and converts it to a uniform format.
+        and converts it to a uniform format based on the model type.
 
         Args:
             audio_data (str): Base64 encoded audio data.
+            model_type (str): The type of model to be used for transcription.
 
         Returns:
             torch.Tensor: Decoded and converted audio data as a tensor.
@@ -198,24 +200,48 @@ class SpeechToTextAPI(AudioAPI):
         audio_bytes = base64.b64decode(audio_data)
         audio_stream = io.BytesIO(audio_bytes)
 
-        # Load audio in its original format
-        audio = AudioSegment.from_file(audio_stream)
+        if model_type == "wav2vec":
+            # Using Librosa for Wave2Vec
+            _waveform, original_sampling_rate = librosa.load(audio_stream, sr=model_sampling_rate, mono=True)
+            waveform = torch.from_numpy(_waveform).unsqueeze(0)
 
-        # Get the sampling rate of the audio file
-        original_sampling_rate = audio.frame_rate
-        self.log.info(f"Original Sampling Rate: {original_sampling_rate}, total length: {audio.duration_seconds}")
+        elif model_type == "wav2vec2":
+            # Using soundfile for Wave2Vec2
+            _waveform, original_sampling_rate = sf.read(audio_stream, dtype="float32")
 
-        # Convert to mono (if not already)
-        if audio.channels > 1:
-            self.log.info(f"Converting audio from {audio.channels} to mono")
-            audio = audio.set_channels(1)
+            # Convert to mono if stereo
+            if _waveform.ndim == 2:
+                _waveform = np.mean(_waveform, axis=1)
 
-        # Export to a uniform format (e.g., WAV) keeping original sampling rate
-        audio_stream = io.BytesIO()
-        audio.export(audio_stream, format="wav")
-        audio_stream.seek(0)
+            # Resample to 16kHz if needed
+            if original_sampling_rate != model_sampling_rate:
+                _waveform = librosa.resample(_waveform, orig_sr=original_sampling_rate, target_sr=model_sampling_rate)
 
-        # Load the audio into a tensor
-        waveform, _ = torchaudio.load(audio_stream, backend="ffmpeg")
+            waveform = torch.from_numpy(_waveform).unsqueeze(0)
 
-        return waveform, original_sampling_rate
+        else:
+            # Using PyDub for other models
+            audio = AudioSegment.from_file(audio_stream)
+
+            # Get the sampling rate of the audio file
+            original_sampling_rate = audio.frame_rate
+            self.log.info(f"Original Sampling Rate: {original_sampling_rate}, total length: {audio.duration_seconds}")
+
+            # Convert to mono (if not already)
+            if audio.channels > 1:
+                self.log.info(f"Converting audio from {audio.channels} to mono")
+                audio = audio.set_channels(1)
+
+            # Export to a uniform format (e.g., WAV) keeping original sampling rate
+            audio_stream = io.BytesIO()
+            audio.export(audio_stream, format="wav")
+            audio_stream.seek(0)
+
+            # Load the audio into a tensor
+            waveform, _ = torchaudio.load(audio_stream, backend="ffmpeg")
+
+            waveform = torchaudio.functional.resample(
+                waveform, orig_freq=original_sampling_rate, new_freq=model_sampling_rate
+            )
+
+        return waveform, int(original_sampling_rate)
