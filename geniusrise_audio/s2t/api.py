@@ -77,12 +77,23 @@ class SpeechToTextAPI(AudioAPI):
         """
         input_json = cherrypy.request.json
         audio_data = input_json.get("audio_file")
-        # input_sampling_rate = input_json.get("input_sampling_rate", 48_000)
         model_sampling_rate = input_json.get("model_sampling_rate", 16_000)
         processor_args = input_json.get("processor_args", {})
-        generate_args = input_json.get("generate_args", {})
         chunk_size = input_json.get("chunk_size", 0)
         overlap_size = input_json.get("overlap_size", 1600)
+
+        generate_args = input_json.copy()
+
+        if "audio_file" in generate_args:
+            del generate_args["audio_file"]
+        if "model_sampling_rate" in generate_args:
+            del generate_args["model_sampling_rate"]
+        if "processor_args" in generate_args:
+            del generate_args["processor_args"]
+        if "chunk_size" in generate_args:
+            del generate_args["chunk_size"]
+        if "overlap_size" in generate_args:
+            del generate_args["overlap_size"]
 
         # TODO: take temperature etc as args, also semantic_temperature
         # TODO: support voice presets
@@ -99,6 +110,10 @@ class SpeechToTextAPI(AudioAPI):
         with torch.no_grad():
             if self.model.config.model_type == "whisper":
                 transcription = self.process_whisper(
+                    audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
+                )
+            elif self.model.config.model_type == "seamless_m4t_v2":
+                transcription = self.process_seamless(
                     audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
                 )
             elif self.model.config.model_type == "wav2vec2":
@@ -135,6 +150,45 @@ class SpeechToTextAPI(AudioAPI):
         # Decode the model output
         transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
         return transcription
+
+    def process_seamless(
+        self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
+    ):
+        """
+        Process audio input with the Whisper model.
+        """
+        audio_input = audio_input.squeeze(0)
+
+        # Split audio input into chunks with overlap
+        if chunk_size > 0:
+            chunks = [audio_input[i : i + chunk_size] for i in range(0, len(audio_input), chunk_size - overlap_size)]
+        else:
+            chunks = [audio_input]
+
+        transcriptions = []
+        for chunk in chunks:
+            # Preprocess and transcribe
+            input_values = self.processor(
+                audios=chunk,
+                return_tensors="pt",
+                sampling_rate=model_sampling_rate,
+                truncation=False,
+                padding="longest",
+                do_normalize=True,
+                **processor_args,
+            )
+
+            if self.use_cuda:
+                input_values = input_values.to(self.device_map)
+
+            # TODO: make generate generic
+            logits = self.model.generate(**input_values, **generate_args, tgt_lang="eng")[0]
+
+            # Decode the model output
+            _transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
+            print(_transcription)
+            transcriptions.append(" ".join(_transcription))
+        return " ".join(transcriptions)
 
     def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
         """
@@ -220,6 +274,7 @@ class SpeechToTextAPI(AudioAPI):
             waveform = torch.from_numpy(_waveform).unsqueeze(0)
 
         else:
+            # For whisper, seamlessm4t
             # Using PyDub for other models
             audio = AudioSegment.from_file(audio_stream)
 

@@ -19,7 +19,7 @@ import torch
 import transformers
 from geniusrise import BatchInput, BatchOutput, Bolt, State
 from geniusrise.logging import setup_logger
-from transformers import AutoFeatureExtractor, AutoModelForAudioClassification, AutoProcessor
+from transformers import AutoFeatureExtractor, AutoModelForAudioClassification, AutoProcessor, AutoConfig
 
 from geniusrise_audio.base.communication import send_email
 
@@ -121,6 +121,7 @@ class AudioBulk(Bolt):
 
         # Load the model and processor
         FeatureExtractorClass = getattr(transformers, processor_class)
+        config = AutoConfig.from_pretrained(processor_name, revision=processor_revision)
         processor = FeatureExtractorClass.from_pretrained(
             processor_name, revision=processor_revision, torch_dtype=torch_dtype
         )
@@ -130,20 +131,20 @@ class AudioBulk(Bolt):
             model = ModelClass.from_pretrained(
                 model_name,
                 revision=model_revision,
-                torchscript=torchscript,
                 max_memory=max_memory,
                 device_map=device_map,
                 load_in_8bit=True,
+                config=config,
                 **model_args,
             )
         elif quantization == 4:
             model = ModelClass.from_pretrained(
                 model_name,
                 revision=model_revision,
-                torchscript=torchscript,
                 max_memory=max_memory,
                 device_map=device_map,
                 load_in_4bit=True,
+                config=config,
                 **model_args,
             )
         else:
@@ -151,9 +152,9 @@ class AudioBulk(Bolt):
                 model_name,
                 revision=model_revision,
                 torch_dtype=torch_dtype,
-                torchscript=torchscript,
                 max_memory=max_memory,
                 device_map=device_map,
+                config=config,
                 **model_args,
             )
 
