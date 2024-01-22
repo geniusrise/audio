@@ -19,12 +19,12 @@ from pydub import AudioSegment
 import cherrypy
 import torch
 import torchaudio
-from typing import Tuple
+from typing import Tuple, Any, Dict
 import soundfile as sf
 import librosa
 import numpy as np
 from geniusrise import BatchInput, BatchOutput, State
-from transformers import AutoModelForCTC, AutoProcessor
+from transformers import AutoModelForCTC, AutoProcessor, pipeline
 
 from geniusrise_audio.base import AudioAPI
 
@@ -63,6 +63,7 @@ class SpeechToTextAPI(AudioAPI):
             **kwargs: Additional keyword arguments.
         """
         super().__init__(input=input, output=output, state=state, **kwargs)
+        self.hf_pipeline = None
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -95,7 +96,6 @@ class SpeechToTextAPI(AudioAPI):
         if "overlap_size" in generate_args:
             del generate_args["overlap_size"]
 
-        # TODO: take temperature etc as args, also semantic_temperature
         # TODO: support voice presets
 
         if not audio_data:
@@ -160,10 +160,11 @@ class SpeechToTextAPI(AudioAPI):
         audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
-        if chunk_size > 0:
-            chunks = [audio_input[i : i + chunk_size] for i in range(0, len(audio_input), chunk_size - overlap_size)]
-        else:
-            chunks = [audio_input]
+        chunks = (
+            self.chunk_audio(audio_input.squeeze(0), chunk_size, overlap_size, overlap_size)
+            if chunk_size > 0
+            else [audio_input]
+        )
 
         transcriptions = []
         for chunk in chunks:
@@ -172,8 +173,6 @@ class SpeechToTextAPI(AudioAPI):
                 audios=chunk,
                 return_tensors="pt",
                 sampling_rate=model_sampling_rate,
-                truncation=False,
-                padding="longest",
                 do_normalize=True,
                 **processor_args,
             )
@@ -182,11 +181,10 @@ class SpeechToTextAPI(AudioAPI):
                 input_values = input_values.to(self.device_map)
 
             # TODO: make generate generic
-            logits = self.model.generate(**input_values, **generate_args, tgt_lang="eng")[0]
+            logits = self.model.generate(**input_values, **generate_args)[0]
 
             # Decode the model output
             _transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
-            print(_transcription)
             transcriptions.append(" ".join(_transcription))
         return " ".join(transcriptions)
 
@@ -199,10 +197,11 @@ class SpeechToTextAPI(AudioAPI):
         audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
-        if chunk_size > 0:
-            chunks = [audio_input[i : i + chunk_size] for i in range(0, len(audio_input), chunk_size - overlap_size)]
-        else:
-            chunks = [audio_input]
+        chunks = (
+            self.chunk_audio(audio_input.squeeze(0), chunk_size, overlap_size, overlap_size)
+            if chunk_size > 0
+            else [audio_input]
+        )
 
         transcriptions = []
         for chunk in chunks:
@@ -237,6 +236,56 @@ class SpeechToTextAPI(AudioAPI):
             print(chunk_transcription.strip())
 
         return " ".join(transcriptions)
+
+    def chunk_audio(self, audio_input, chunk_size, stride_left, stride_right):
+        """
+        Splits the audio input into overlapping chunks with specified left and right strides.
+
+        Args:
+            audio_input (torch.Tensor): The input audio tensor.
+            chunk_size (int): The size of each audio chunk.
+            stride_left (int): The size of the left stride for overlap.
+            stride_right (int): The size of the right stride for overlap.
+
+        Returns:
+            List[torch.Tensor]: List of chunked audio tensors with overlap.
+        """
+        chunks = []
+        step = chunk_size - stride_left - stride_right
+
+        # Ensure step is positive to avoid infinite loop
+        if step <= 0:
+            raise ValueError("Stride left and right combined should be less than chunk size")
+
+        for chunk_start_idx in range(0, len(audio_input), step):
+            chunk_end_idx = chunk_start_idx + chunk_size
+            if chunk_end_idx > len(audio_input):
+                chunk_end_idx = len(audio_input)
+                chunk_start_idx = max(0, chunk_end_idx - chunk_size)  # Ensure chunk is of size chunk_size
+
+            chunk = audio_input[chunk_start_idx:chunk_end_idx]
+            chunks.append(chunk)
+
+        return chunks
+
+    def rescale_stride(strides, input_length, output_length):
+        """
+        Rescales the stride values from audio domain to the model's output domain.
+
+        Args:
+            strides (Tuple[int, int]): Tuple of left and right stride in audio domain.
+            input_length (int): Length of the input sequence (audio domain).
+            output_length (int): Length of the output sequence (model's domain).
+
+        Returns:
+            Tuple[int, int]: Tuple of left and right stride in the model's output domain.
+        """
+        input_ratio = output_length / input_length
+
+        rescaled_left_stride = int(round(strides[0] * input_ratio))
+        rescaled_right_stride = int(round(strides[1] * input_ratio))
+
+        return rescaled_left_stride, rescaled_right_stride
 
     def decode_audio(self, audio_data: str, model_type: str, model_sampling_rate: int) -> Tuple[torch.Tensor, int]:
         """
@@ -300,3 +349,63 @@ class SpeechToTextAPI(AudioAPI):
             )
 
         return waveform, int(original_sampling_rate)
+
+    def initialize_pipeline(self):
+        """
+        Lazy initialization of the NER Hugging Face pipeline.
+        """
+        if not self.hf_pipeline:
+            self.hf_pipeline = pipeline(
+                "automatic-speech-recognition",
+                model=self.model,
+                feature_extractor=self.processor.feature_extractor,
+                tokenizer=self.processor.tokenizer,
+                framework="pt",
+            )
+
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    @cherrypy.tools.allow(methods=["POST"])
+    def asr_pipeline(self, **kwargs: Any) -> Dict[str, Any]:
+        """
+        Recognizes named entities in the input text using the Hugging Face pipeline.
+
+        This method leverages a pre-trained NER model to identify and classify entities in text into categories such as
+        names, organizations, locations, etc. It's suitable for processing various types of text content.
+
+        Args:
+            **kwargs (Any): Arbitrary keyword arguments, typically containing 'text' for the input text.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the original input text and a list of recognized entities.
+
+        Example CURL Request for NER:
+        ```bash
+        curl -X POST localhost:3000/api/v1/ner_pipeline \
+            -H "Content-Type: application/json" \
+            -d '{"text": "John Doe works at OpenAI in San Francisco."}' | jq
+        ```
+        """
+        self.initialize_pipeline()  # Initialize the pipeline on first API hit
+
+        input_json = cherrypy.request.json
+        audio_data = input_json.get("audio_file")
+        model_sampling_rate = input_json.get("model_sampling_rate", 16_000)
+
+        generate_args = input_json.copy()
+
+        if "audio_file" in generate_args:
+            del generate_args["audio_file"]
+        if "model_sampling_rate" in generate_args:
+            del generate_args["model_sampling_rate"]
+
+        audio_input, input_sampling_rate = self.decode_audio(
+            audio_data, self.model.config.model_type, model_sampling_rate
+        )
+
+        print(audio_input.shape)
+
+        result = self.hf_pipeline(audio_input.squeeze(0).numpy(), **generate_args)  # type: ignore
+
+        return {"transcriptions": result}
