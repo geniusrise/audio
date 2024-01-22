@@ -78,6 +78,9 @@ class SpeechToTextAPI(AudioAPI):
         model_sampling_rate = input_json.get("model_sampling_rate", 16_000)
         processor_args = input_json.get("processor_args", {})
         generate_args = input_json.get("generate_args", {})
+        chunk_size = input_json.get("chunk_size", 0)
+        overlap_size = input_json.get("overlap_size", 1600)
+
         # TODO: take temperature etc as args, also semantic_temperature
         # TODO: support voice presets
 
@@ -85,12 +88,30 @@ class SpeechToTextAPI(AudioAPI):
             raise cherrypy.HTTPError(400, "No audio data provided.")
 
         # Convert base64 encoded data to bytes
-        # TODO: handle other file types
         audio_input, input_sampling_rate = self.decode_audio(audio_data)
         audio_input = torchaudio.functional.resample(
             audio_input, orig_freq=input_sampling_rate, new_freq=model_sampling_rate
         )
 
+        # Perform inference
+        with torch.no_grad():
+            if self.model.config.model_type == "whisper":
+                transcription = self.process_whisper(
+                    audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
+                )
+            elif self.model.config.model_type == "wav2vec2":
+                transcription = self.process_wav2vec2(
+                    audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size
+                )
+
+        return {"transcription": transcription}
+
+    def process_whisper(
+        self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
+    ):
+        """
+        Process audio input with the Whisper model.
+        """
         # Preprocess and transcribe
         input_values = self.processor(
             audio_input.squeeze(0),
@@ -106,15 +127,61 @@ class SpeechToTextAPI(AudioAPI):
         if self.use_cuda:
             input_values = input_values.to(self.device_map)
 
-        # Perform inference
-        with torch.no_grad():
-            # TODO: make generate generic
-            logits = self.model.generate(**input_values, **generate_args)
+        # TODO: make generate generic
+        logits = self.model.generate(**input_values, **generate_args)
 
         # Decode the model output
         transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
+        return transcription
 
-        return {"transcription": transcription}
+    def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
+        """
+        Process audio input with the Wav2Vec2 model.
+        """
+        # TensorFloat32 tensor cores for float32 matrix multiplication availabl
+        torch.set_float32_matmul_precision("high")
+
+        # Split audio input into chunks with overlap
+        if chunk_size > 0:
+            chunks = [
+                audio_input[:, i : i + chunk_size] for i in range(0, audio_input.shape[1], chunk_size - overlap_size)
+            ]
+        else:
+            chunks = [audio_input]
+
+        transcriptions = []
+        for chunk in chunks:
+            print(chunk.shape)
+
+            processed = self.processor(
+                chunk.squeeze(0),
+                return_tensors="pt",
+                sampling_rate=model_sampling_rate,
+                truncation=False,
+                padding="longest",
+                do_normalize=True,
+                **processor_args,
+            )
+
+            if self.use_cuda:
+                input_values = processed.input_values.to(self.device_map)
+                if hasattr(processed, "attention_mask"):
+                    attention_mask = processed.attention_mask.to(self.device_map)
+
+            if self.model.config.feat_extract_norm == "layer":
+                logits = self.model(input_values, attention_mask=attention_mask).logits
+            else:
+                logits = self.model(input_values).logits
+
+            print(logits.shape)
+            predicted_ids = torch.argmax(logits[0], dim=-1)
+
+            # Decode each chunk
+            chunk_transcription = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)
+            transcriptions.append(chunk_transcription[0])
+            print(chunk_transcription)
+
+        return " ".join(transcriptions)
 
     def decode_audio(self, audio_data: str) -> Tuple[torch.Tensor, int]:
         """

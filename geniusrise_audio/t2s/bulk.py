@@ -67,7 +67,7 @@ class TextToSpeechBulk(AudioBulk):
             --args \
                 model_name="facebook/bart-large-cnn" \
                 model_class="AutoModelForSeq2SeqLM" \
-                tokenizer_class="AutoTokenizer" \
+                processor_class="AutoTokenizer" \
                 use_cuda=True \
                 precision="float" \
                 quantization=0 \

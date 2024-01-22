@@ -16,3 +16,5 @@ sentence_transformers==2.2.2
 nbformat==5.9.2
 pydub==0.25.1
 torchaudio==2.1.2
+soundfile==0.12.1
+librosa==0.10.1
