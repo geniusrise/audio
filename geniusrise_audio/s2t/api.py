@@ -27,6 +27,7 @@ from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor, pipeline
 
 from geniusrise_audio.base import AudioAPI
+from geniusrise_audio.s2t.util import whisper_alignment_heads
 
 
 class SpeechToTextAPI(AudioAPI):
@@ -129,6 +130,9 @@ class SpeechToTextAPI(AudioAPI):
         """
         Process audio input with the Whisper model.
         """
+        alignment_heads = [v for k, v in whisper_alignment_heads.items() if k in self.model_name][0]
+        self.model.generation_config.alignment_heads = alignment_heads
+
         # Preprocess and transcribe
         input_values = self.processor(
             audio_input.squeeze(0),
@@ -145,11 +149,22 @@ class SpeechToTextAPI(AudioAPI):
             input_values = input_values.to(self.device_map)
 
         # TODO: make generate generic
-        logits = self.model.generate(**input_values, **generate_args)
+        logits = self.model.generate(
+            **input_values, **generate_args, return_timestamps=True, return_token_timestamps=True, return_segments=True
+        )
 
         # Decode the model output
-        transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
-        return transcription
+        transcription = self.processor.batch_decode(logits["sequences"], skip_special_tokens=True)
+        segments = self.processor.batch_decode([x["tokens"] for x in logits["segments"][0]], skip_special_tokens=True)
+        timestamps = [
+            {
+                "tokens": t,
+                "start": l["start"].cpu().numpy().tolist(),
+                "end": l["end"].cpu().numpy().tolist(),
+            }
+            for t, l in zip(segments, logits["segments"][0])
+        ]
+        return {"text": transcription, "segments": timestamps}
 
     def process_seamless(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
@@ -251,41 +266,15 @@ class SpeechToTextAPI(AudioAPI):
             List[torch.Tensor]: List of chunked audio tensors with overlap.
         """
         chunks = []
-        step = chunk_size - stride_left - stride_right
 
-        # Ensure step is positive to avoid infinite loop
-        if step <= 0:
-            raise ValueError("Stride left and right combined should be less than chunk size")
-
-        for chunk_start_idx in range(0, len(audio_input), step):
-            chunk_end_idx = chunk_start_idx + chunk_size
-            if chunk_end_idx > len(audio_input):
-                chunk_end_idx = len(audio_input)
-                chunk_start_idx = max(0, chunk_end_idx - chunk_size)  # Ensure chunk is of size chunk_size
+        for block_start in range(0, len(audio_input), chunk_size):
+            chunk_end_idx = min(block_start + chunk_size + stride_right, len(audio_input))
+            chunk_start_idx = max(0, block_start - stride_left)
 
             chunk = audio_input[chunk_start_idx:chunk_end_idx]
             chunks.append(chunk)
 
         return chunks
-
-    def rescale_stride(strides, input_length, output_length):
-        """
-        Rescales the stride values from audio domain to the model's output domain.
-
-        Args:
-            strides (Tuple[int, int]): Tuple of left and right stride in audio domain.
-            input_length (int): Length of the input sequence (audio domain).
-            output_length (int): Length of the output sequence (model's domain).
-
-        Returns:
-            Tuple[int, int]: Tuple of left and right stride in the model's output domain.
-        """
-        input_ratio = output_length / input_length
-
-        rescaled_left_stride = int(round(strides[0] * input_ratio))
-        rescaled_right_stride = int(round(strides[1] * input_ratio))
-
-        return rescaled_left_stride, rescaled_right_stride
 
     def decode_audio(self, audio_data: str, model_type: str, model_sampling_rate: int) -> Tuple[torch.Tensor, int]:
         """
@@ -403,8 +392,6 @@ class SpeechToTextAPI(AudioAPI):
         audio_input, input_sampling_rate = self.decode_audio(
             audio_data, self.model.config.model_type, model_sampling_rate
         )
-
-        print(audio_input.shape)
 
         result = self.hf_pipeline(audio_input.squeeze(0).numpy(), **generate_args)  # type: ignore
 
