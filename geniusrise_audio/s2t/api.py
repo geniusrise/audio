@@ -20,9 +20,7 @@ import cherrypy
 import torch
 import torchaudio
 from typing import Tuple, Any, Dict
-import soundfile as sf
 import librosa
-import numpy as np
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor, pipeline
 
@@ -82,7 +80,7 @@ class SpeechToTextAPI(AudioAPI):
         model_sampling_rate = input_json.get("model_sampling_rate", 16_000)
         processor_args = input_json.get("processor_args", {})
         chunk_size = input_json.get("chunk_size", 0)
-        overlap_size = input_json.get("overlap_size", 1600)
+        overlap_size = input_json.get("overlap_size", 0)
 
         generate_args = input_json.copy()
 
@@ -96,6 +94,9 @@ class SpeechToTextAPI(AudioAPI):
             del generate_args["chunk_size"]
         if "overlap_size" in generate_args:
             del generate_args["overlap_size"]
+
+        if chunk_size > 0 and overlap_size == 0:
+            overlap_size = int(chunk_size / 6)
 
         # TODO: support voice presets
 
@@ -200,15 +201,15 @@ class SpeechToTextAPI(AudioAPI):
 
             # Decode the model output
             _transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
-            transcriptions.append(" ".join(_transcription))
-        return " ".join(transcriptions)
+            transcriptions.append(" ".join([x.strip() for x in _transcription]))
+        return "".join(transcriptions)
 
     def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
         """
         Process audio input with the Wav2Vec2 model.
         """
         # TensorFloat32 tensor cores for float32 matrix multiplication availabl
-        torch.set_float32_matmul_precision("high")
+        # torch.set_float32_matmul_precision("high")
         audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
@@ -220,8 +221,6 @@ class SpeechToTextAPI(AudioAPI):
 
         transcriptions = []
         for chunk in chunks:
-            print(chunk.shape)
-
             processed = self.processor(
                 chunk,
                 return_tensors="pt",
@@ -236,19 +235,21 @@ class SpeechToTextAPI(AudioAPI):
                 input_values = processed.input_values.to(self.device_map)
                 if hasattr(processed, "attention_mask"):
                     attention_mask = processed.attention_mask.to(self.device_map)
+            else:
+                input_values = processed.input_values
+                if hasattr(processed, "attention_mask"):
+                    attention_mask = processed.attention_mask
 
             if self.model.config.feat_extract_norm == "layer":
                 logits = self.model(input_values, attention_mask=attention_mask).logits
             else:
                 logits = self.model(input_values).logits
 
-            print(logits.shape)
             predicted_ids = torch.argmax(logits, dim=-1)
 
             # Decode each chunk
-            chunk_transcription = self.processor.decode(predicted_ids[0], skip_special_tokens=True)
-            transcriptions.append(chunk_transcription)
-            print(chunk_transcription.strip())
+            chunk_transcription = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)
+            transcriptions.append(chunk_transcription[0])
 
         return " ".join(transcriptions)
 
@@ -296,20 +297,21 @@ class SpeechToTextAPI(AudioAPI):
             # Using Librosa for Wave2Vec
             _waveform, original_sampling_rate = librosa.load(audio_stream, sr=model_sampling_rate, mono=True)
             waveform = torch.from_numpy(_waveform).unsqueeze(0)
+            return waveform, int(original_sampling_rate)
 
         elif model_type == "wav2vec2":
-            # Using soundfile for Wave2Vec2
-            _waveform, original_sampling_rate = sf.read(audio_stream, dtype="float32")
-
-            # Convert to mono if stereo
-            if _waveform.ndim == 2:
-                _waveform = np.mean(_waveform, axis=1)
+            # Using torchaudio for Wave2Vec2
+            _waveform, original_sampling_rate = torchaudio.load(audio_stream)
+            if _waveform.shape[0] > 1:
+                _waveform = torch.mean(_waveform, dim=0, keepdim=True)  # type: ignore
 
             # Resample to 16kHz if needed
             if original_sampling_rate != model_sampling_rate:
-                _waveform = librosa.resample(_waveform, orig_sr=original_sampling_rate, target_sr=model_sampling_rate)
+                _waveform = torchaudio.functional.resample(
+                    _waveform, orig_freq=original_sampling_rate, new_freq=model_sampling_rate
+                )
 
-            waveform = torch.from_numpy(_waveform).unsqueeze(0)
+            return _waveform, original_sampling_rate  # type: ignore
 
         else:
             # For whisper, seamlessm4t
@@ -336,8 +338,7 @@ class SpeechToTextAPI(AudioAPI):
             waveform = torchaudio.functional.resample(
                 waveform, orig_freq=original_sampling_rate, new_freq=model_sampling_rate
             )
-
-        return waveform, int(original_sampling_rate)
+            return waveform, int(original_sampling_rate)
 
     def initialize_pipeline(self):
         """

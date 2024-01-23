@@ -122,9 +122,7 @@ class AudioBulk(Bolt):
         # Load the model and processor
         FeatureExtractorClass = getattr(transformers, processor_class)
         config = AutoConfig.from_pretrained(processor_name, revision=processor_revision)
-        processor = FeatureExtractorClass.from_pretrained(
-            processor_name, revision=processor_revision, torch_dtype=torch_dtype
-        )
+        processor = FeatureExtractorClass.from_pretrained(processor_name, revision=processor_revision)
 
         ModelClass = getattr(transformers, model_class)
         if quantization == 8:
@@ -132,7 +130,6 @@ class AudioBulk(Bolt):
                 model_name,
                 revision=model_revision,
                 max_memory=max_memory,
-                device_map=device_map,
                 load_in_8bit=True,
                 config=config,
                 **model_args,
@@ -142,7 +139,6 @@ class AudioBulk(Bolt):
                 model_name,
                 revision=model_revision,
                 max_memory=max_memory,
-                device_map=device_map,
                 load_in_4bit=True,
                 config=config,
                 **model_args,
@@ -153,11 +149,11 @@ class AudioBulk(Bolt):
                 revision=model_revision,
                 torch_dtype=torch_dtype,
                 max_memory=max_memory,
-                device_map=device_map,
                 config=config,
                 **model_args,
             )
 
+        model = model.to(device_map)
         if compile:
             model = torch.compile(model)
 
