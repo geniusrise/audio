@@ -13,6 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Tuple
+import io
+from pydub import AudioSegment
+import librosa
+import torch
+import torchaudio
+
 # https://gist.github.com/hollance/42e32852f24243b748ae6bc1f985b13a
 # fmt: off
 whisper_alignment_heads = {
@@ -29,3 +36,89 @@ whisper_alignment_heads = {
     "whisper-large": [[10, 12], [13, 17], [16, 11], [16, 12], [16, 13], [17, 15], [17, 16], [18, 4], [18, 11], [18, 19], [19, 11], [21, 2], [21, 3], [22, 3], [22, 9], [22, 12], [23, 5], [23, 7], [23, 13], [25, 5], [26, 1], [26, 12], [27, 15]],
 }
 # fmt: on
+
+
+def decode_audio(audio_bytes: bytes, model_type: str, model_sampling_rate: int) -> Tuple[torch.Tensor, int]:
+    """
+    Decodes the base64 encoded audio data to bytes, determines its sampling rate,
+    and converts it to a uniform format based on the model type.
+
+    Args:
+        audio_data (str): Base64 encoded audio data.
+        model_type (str): The type of model to be used for transcription.
+
+    Returns:
+        torch.Tensor: Decoded and converted audio data as a tensor.
+        int: The sampling rate of the audio file.
+    """
+    audio_stream = io.BytesIO(audio_bytes)
+
+    if model_type == "wav2vec":
+        # Using Librosa for Wave2Vec
+        _waveform, original_sampling_rate = librosa.load(audio_stream, sr=model_sampling_rate, mono=True)
+        waveform = torch.from_numpy(_waveform).unsqueeze(0)
+        return waveform, int(original_sampling_rate)
+
+    elif model_type == "wav2vec2":
+        # Using torchaudio for Wave2Vec2
+        _waveform, original_sampling_rate = torchaudio.load(audio_stream)
+        if _waveform.shape[0] > 1:
+            _waveform = torch.mean(_waveform, dim=0, keepdim=True)  # type: ignore
+
+        # Resample to 16kHz if needed
+        if original_sampling_rate != model_sampling_rate:
+            _waveform = torchaudio.functional.resample(
+                _waveform, orig_freq=original_sampling_rate, new_freq=model_sampling_rate
+            )
+
+        return _waveform, original_sampling_rate  # type: ignore
+
+    else:
+        # For whisper, seamlessm4t
+        # Using PyDub for other models
+        audio = AudioSegment.from_file(audio_stream)
+
+        # Get the sampling rate of the audio file
+        original_sampling_rate = audio.frame_rate
+
+        # Convert to mono (if not already)
+        if audio.channels > 1:
+            audio = audio.set_channels(1)
+
+        # Export to a uniform format (e.g., WAV) keeping original sampling rate
+        audio_stream = io.BytesIO()
+        audio.export(audio_stream, format="wav")
+        audio_stream.seek(0)
+
+        # Load the audio into a tensor
+        waveform, _ = torchaudio.load(audio_stream, backend="ffmpeg")
+
+        waveform = torchaudio.functional.resample(
+            waveform, orig_freq=original_sampling_rate, new_freq=model_sampling_rate
+        )
+        return waveform, int(original_sampling_rate)
+
+
+def chunk_audio(audio_input, chunk_size, stride_left, stride_right):
+    """
+    Splits the audio input into overlapping chunks with specified left and right strides.
+
+    Args:
+        audio_input (torch.Tensor): The input audio tensor.
+        chunk_size (int): The size of each audio chunk.
+        stride_left (int): The size of the left stride for overlap.
+        stride_right (int): The size of the right stride for overlap.
+
+    Returns:
+        List[torch.Tensor]: List of chunked audio tensors with overlap.
+    """
+    chunks = []
+
+    for block_start in range(0, len(audio_input), chunk_size):
+        chunk_end_idx = min(block_start + chunk_size + stride_right, len(audio_input))
+        chunk_start_idx = max(0, block_start - stride_left)
+
+        chunk = audio_input[chunk_start_idx:chunk_end_idx]
+        chunks.append(chunk)
+
+    return chunks

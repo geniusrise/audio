@@ -14,18 +14,14 @@
 # limitations under the License.
 
 import base64
-import io
-from pydub import AudioSegment
 import cherrypy
 import torch
-import torchaudio
-from typing import Tuple, Any, Dict
-import librosa
+from typing import Any, Dict
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor, pipeline
 
 from geniusrise_audio.base import AudioAPI
-from geniusrise_audio.s2t.util import whisper_alignment_heads
+from geniusrise_audio.s2t.util import whisper_alignment_heads, decode_audio, chunk_audio
 
 
 class SpeechToTextAPI(AudioAPI):
@@ -149,8 +145,11 @@ class SpeechToTextAPI(AudioAPI):
             raise cherrypy.HTTPError(400, "No audio data provided.")
 
         # Convert base64 encoded data to bytes
-        audio_input, input_sampling_rate = self.decode_audio(
-            audio_data, self.model.config.model_type, model_sampling_rate
+        audio_bytes = base64.decode(audio_data)
+        audio_input, input_sampling_rate = decode_audio(
+            audio_bytes=audio_bytes,
+            model_type=self.model.config.model_type,
+            model_sampling_rate=model_sampling_rate,
         )
 
         # Perform inference
@@ -222,7 +221,7 @@ class SpeechToTextAPI(AudioAPI):
 
         # Split audio input into chunks with overlap
         chunks = (
-            self.chunk_audio(audio_input.squeeze(0), chunk_size, overlap_size, overlap_size)
+            chunk_audio(audio_input.squeeze(0), chunk_size, overlap_size, overlap_size)
             if chunk_size > 0
             else [audio_input]
         )
@@ -259,7 +258,7 @@ class SpeechToTextAPI(AudioAPI):
 
         # Split audio input into chunks with overlap
         chunks = (
-            self.chunk_audio(audio_input.squeeze(0), chunk_size, overlap_size, overlap_size)
+            chunk_audio(audio_input.squeeze(0), chunk_size, overlap_size, overlap_size)
             if chunk_size > 0
             else [audio_input]
         )
@@ -298,93 +297,6 @@ class SpeechToTextAPI(AudioAPI):
 
         return " ".join(transcriptions)
 
-    def chunk_audio(self, audio_input, chunk_size, stride_left, stride_right):
-        """
-        Splits the audio input into overlapping chunks with specified left and right strides.
-
-        Args:
-            audio_input (torch.Tensor): The input audio tensor.
-            chunk_size (int): The size of each audio chunk.
-            stride_left (int): The size of the left stride for overlap.
-            stride_right (int): The size of the right stride for overlap.
-
-        Returns:
-            List[torch.Tensor]: List of chunked audio tensors with overlap.
-        """
-        chunks = []
-
-        for block_start in range(0, len(audio_input), chunk_size):
-            chunk_end_idx = min(block_start + chunk_size + stride_right, len(audio_input))
-            chunk_start_idx = max(0, block_start - stride_left)
-
-            chunk = audio_input[chunk_start_idx:chunk_end_idx]
-            chunks.append(chunk)
-
-        return chunks
-
-    def decode_audio(self, audio_data: str, model_type: str, model_sampling_rate: int) -> Tuple[torch.Tensor, int]:
-        """
-        Decodes the base64 encoded audio data to bytes, determines its sampling rate,
-        and converts it to a uniform format based on the model type.
-
-        Args:
-            audio_data (str): Base64 encoded audio data.
-            model_type (str): The type of model to be used for transcription.
-
-        Returns:
-            torch.Tensor: Decoded and converted audio data as a tensor.
-            int: The sampling rate of the audio file.
-        """
-        audio_bytes = base64.b64decode(audio_data)
-        audio_stream = io.BytesIO(audio_bytes)
-
-        if model_type == "wav2vec":
-            # Using Librosa for Wave2Vec
-            _waveform, original_sampling_rate = librosa.load(audio_stream, sr=model_sampling_rate, mono=True)
-            waveform = torch.from_numpy(_waveform).unsqueeze(0)
-            return waveform, int(original_sampling_rate)
-
-        elif model_type == "wav2vec2":
-            # Using torchaudio for Wave2Vec2
-            _waveform, original_sampling_rate = torchaudio.load(audio_stream)
-            if _waveform.shape[0] > 1:
-                _waveform = torch.mean(_waveform, dim=0, keepdim=True)  # type: ignore
-
-            # Resample to 16kHz if needed
-            if original_sampling_rate != model_sampling_rate:
-                _waveform = torchaudio.functional.resample(
-                    _waveform, orig_freq=original_sampling_rate, new_freq=model_sampling_rate
-                )
-
-            return _waveform, original_sampling_rate  # type: ignore
-
-        else:
-            # For whisper, seamlessm4t
-            # Using PyDub for other models
-            audio = AudioSegment.from_file(audio_stream)
-
-            # Get the sampling rate of the audio file
-            original_sampling_rate = audio.frame_rate
-            self.log.info(f"Original Sampling Rate: {original_sampling_rate}, total length: {audio.duration_seconds}")
-
-            # Convert to mono (if not already)
-            if audio.channels > 1:
-                self.log.info(f"Converting audio from {audio.channels} to mono")
-                audio = audio.set_channels(1)
-
-            # Export to a uniform format (e.g., WAV) keeping original sampling rate
-            audio_stream = io.BytesIO()
-            audio.export(audio_stream, format="wav")
-            audio_stream.seek(0)
-
-            # Load the audio into a tensor
-            waveform, _ = torchaudio.load(audio_stream, backend="ffmpeg")
-
-            waveform = torchaudio.functional.resample(
-                waveform, orig_freq=original_sampling_rate, new_freq=model_sampling_rate
-            )
-            return waveform, int(original_sampling_rate)
-
     def initialize_pipeline(self):
         """
         Lazy initialization of the NER Hugging Face pipeline.
@@ -403,7 +315,7 @@ class SpeechToTextAPI(AudioAPI):
     @cherrypy.tools.json_out()
     @cherrypy.tools.allow(methods=["POST"])
     def asr_pipeline(self, **kwargs: Any) -> Dict[str, Any]:
-        """
+        r"""
         Recognizes named entities in the input text using the Hugging Face pipeline.
 
         This method leverages a pre-trained NER model to identify and classify entities in text into categories such as
@@ -437,9 +349,7 @@ class SpeechToTextAPI(AudioAPI):
         if "model_sampling_rate" in generate_args:
             del generate_args["model_sampling_rate"]
 
-        audio_input, input_sampling_rate = self.decode_audio(
-            audio_data, self.model.config.model_type, model_sampling_rate
-        )
+        audio_input, input_sampling_rate = decode_audio(audio_data, self.model.config.model_type, model_sampling_rate)
 
         result = self.hf_pipeline(audio_input.squeeze(0).numpy(), **generate_args)  # type: ignore
 
