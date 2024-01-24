@@ -29,7 +29,7 @@ from geniusrise_audio.s2t.util import whisper_alignment_heads
 
 
 class SpeechToTextAPI(AudioAPI):
-    """
+    r"""
     SpeechToTextAPI is a subclass of AudioAPI specifically designed for speech-to-text models.
     It extends the functionality to handle speech-to-text processing using various ASR models.
 
@@ -40,6 +40,42 @@ class SpeechToTextAPI(AudioAPI):
     Methods:
         transcribe(audio_input: bytes) -> str:
             Transcribes the given audio input to text using the speech-to-text model.
+
+    Example CLI Usage:
+    ```bash
+    genius SpeechToTextAPI rise \
+        batch \
+            --input_s3_bucket geniusrise-test \
+            --input_s3_folder none \
+        batch \
+            --output_s3_bucket geniusrise-test \
+            --output_s3_folder none \
+        postgres \
+            --postgres_host 127.0.0.1 \
+            --postgres_port 5432 \
+            --postgres_user postgres \
+            --postgres_password postgres \
+            --postgres_database geniusrise\
+            --postgres_table state \
+        --id facebook/wav2vec2-large-960h-lv60-self \
+        listen \
+            --args \
+                model_name="facebook/wav2vec2-large-960h-lv60-self" \
+                model_class="Wav2Vec2ForCTC" \
+                processor_class="Wav2Vec2Processor" \
+                use_cuda=True \
+                precision="float32" \
+                quantization=0 \
+                device_map="cuda:0" \
+                max_memory=None \
+                torchscript=False \
+                compile=True \
+                endpoint="*" \
+                port=3000 \
+                cors_domain="http://localhost:3000" \
+                username="user" \
+                password="password"
+    ```
     """
 
     model: AutoModelForCTC
@@ -68,12 +104,21 @@ class SpeechToTextAPI(AudioAPI):
     @cherrypy.tools.json_out()
     @cherrypy.tools.json_in()
     def transcribe(self):
-        """
+        r"""
         API endpoint to transcribe the given audio input to text using the speech-to-text model.
         Expects a JSON input with 'audio_file' as a key containing the base64 encoded audio data.
 
         Returns:
             Dict[str, str]: A dictionary containing the transcribed text.
+
+        Example CURL Request for transcription:
+        ```bash
+        (base64 -w 0 sample.flac | awk '{print "{\"audio_file\": \""$0"\", \"model_sampling_rate\": 16000, \"chunk_size\": 1280000, \"overlap_size\": 213333, \"do_sample\": true, \"num_beams\": 4, \"temperature\": 0.6, \"tgt_lang\": \"eng\"}"}' > /tmp/payload.json)
+        curl -X POST http://localhost:3000/api/v1/transcribe \
+            -H "Content-Type: application/json" \
+            -u user:password \
+            -d @/tmp/payload.json | jq
+        ```
         """
         input_json = cherrypy.request.json
         audio_data = input_json.get("audio_file")
@@ -370,11 +415,13 @@ class SpeechToTextAPI(AudioAPI):
         Returns:
             Dict[str, Any]: A dictionary containing the original input text and a list of recognized entities.
 
-        Example CURL Request for NER:
+        Example CURL Request for transcription:
         ```bash
-        curl -X POST localhost:3000/api/v1/ner_pipeline \
+        (base64 -w 0 sample.flac | awk '{print "{\"audio_file\": \""$0"\", \"model_sampling_rate\": 16000, \"chunk_length_s\": 60}"}' > /tmp/payload.json)
+        curl -X POST http://localhost:3000/api/v1/asr_pipeline \
             -H "Content-Type: application/json" \
-            -d '{"text": "John Doe works at OpenAI in San Francisco."}' | jq
+            -u user:password \
+            -d @/tmp/payload.json | jq
         ```
         """
         self.initialize_pipeline()  # Initialize the pipeline on first API hit
