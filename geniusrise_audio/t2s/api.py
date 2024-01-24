@@ -14,29 +14,35 @@
 # limitations under the License.
 
 import base64
-import io
-
 import cherrypy
 import torch
+from typing import Any, Dict
 from geniusrise import BatchInput, BatchOutput, State
-from pydub import AudioSegment
-from transformers import AutoModel, AutoProcessor
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline, SpeechT5HifiGan
+from datasets import load_dataset
 
 from geniusrise_audio.base import AudioAPI
+from geniusrise_audio.t2s.util import convert_waveform_to_audio_file
 
 
 class TextToSpeechAPI(AudioAPI):
     """
-    TextToSpeechAPI is a subclass of AudioAPI specifically designed for text-to-speech models.
-    It extends the functionality to handle text-to-speech processing using various TTS models.
+    TextToSpeechAPI for converting text to speech using various TTS models.
 
     Attributes:
-        model (AutoModelForConditionalGeneration): The speech-to-text model.
-        processor (AutoProcessor): The processor to prepare input audio data for the model.
+        model (AutoModelForSeq2SeqLM): The text-to-speech model.
+        tokenizer (AutoTokenizer): The tokenizer for the model.
+
+    Methods:
+        synthesize(text_input: str) -> bytes:
+            Converts the given text input to speech using the text-to-speech model.
+
+    Example CLI Usage:
+    ... [Similar to SpeechToTextAPI example CLI usage] ...
     """
 
-    model: AutoModel
-    processor: AutoProcessor
+    model: AutoModelForSeq2SeqLM
+    tokenizer: AutoTokenizer
 
     def __init__(
         self,
@@ -46,7 +52,7 @@ class TextToSpeechAPI(AudioAPI):
         **kwargs,
     ):
         """
-        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
+        Initializes the TextToSpeechAPI with configurations for text-to-speech processing.
 
         Args:
             input (BatchInput): The input data configuration.
@@ -55,39 +61,149 @@ class TextToSpeechAPI(AudioAPI):
             **kwargs: Additional keyword arguments.
         """
         super().__init__(input=input, output=output, state=state, **kwargs)
+        self.hf_pipeline = None
+        self.vocoder = None
+        self.embeddings_dataset = None
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     @cherrypy.tools.json_in()
-    def generate(self):
+    def synthesize(self):
         """
-        API endpoint to generate speech from the given text using the text-to-speech model.
+        API endpoint to convert text input to speech using the text-to-speech model.
         Expects a JSON input with 'text' as a key containing the text to be synthesized.
 
         Returns:
-            Dict[str, Any]: A dictionary containing the generated audio data.
+            Dict[str, str]: A dictionary containing the base64 encoded audio data.
+
+        Example CURL Request for synthesis:
+        ... [Provide example CURL request] ...
         """
         input_json = cherrypy.request.json
-        text = input_json.get("text")
-        processor_args = input_json.get("processor_args", {})
-        generate_args = input_json.get("generate_args", {})
+        text_data = input_json.get("text")
+        output_type = input_json.get("output_type")
+        voice_preset = input_json.get("voice_preset")
 
-        if not text:
-            raise cherrypy.HTTPError(400, "No text provided.")
+        generate_args = input_json.copy()
 
-        # Preprocess and generate speech
-        inputs = self.processor(text, return_tensors="pt", **processor_args)
+        if "text" in generate_args:
+            del generate_args["text"]
+        if "output_type" in generate_args:
+            del generate_args["output_type"]
+        if "voice_preset" in generate_args:
+            del generate_args["voice_preset"]
+
+        if not text_data:
+            raise cherrypy.HTTPError(400, "No text data provided.")
+
+        # Perform inference
         with torch.no_grad():
-            generated_ids = self.model.generate(inputs.input_ids, **generate_args)
+            if self.model.config.model_type == "vits":
+                audio_output = self.process_mms(text_data, generate_args=generate_args)
+            elif self.model.config.model_type == "coarse_acoustics":
+                audio_output = self.process_bark(text_data, voice_preset=voice_preset, generate_args=generate_args)
+            elif self.model.config.model_type == "speecht5":
+                audio_output = self.process_speecht5_tts(
+                    text_data, voice_preset=voice_preset, generate_args=generate_args
+                )
 
-        # Convert generated ids to audio waveform
-        audio = self.processor.decode(generated_ids, output_format="wav")
-        sample_rate = self.model.config.sampling_rate
+        # Convert audio to base64 encoded data
+        audio_file = convert_waveform_to_audio_file(audio_output, output_type=output_type, sample_rate=16_000)
+        audio_base64 = base64.encode(audio_file)
 
-        # Convert the audio to wav with sampling rate
-        audio_segment = AudioSegment(audio, frame_rate=sample_rate, channels=1, sample_width=2)
-        buffer = io.BytesIO()
-        audio_segment.export(buffer, format="wav")
-        audio_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        return {"audio_file": audio_base64, "input": text_data}
 
-        return {"audio": audio_base64, "text": text}
+    def process_mms(self, text_input: str, generate_args: dict):
+        inputs = self.processor(text_input, return_tensors="pt")
+
+        if self.use_cuda:
+            inputs = inputs.to(self.device_map)
+
+        with torch.no_grad():
+            outputs = self.model(**inputs, **generate_args)
+
+        waveform = outputs.waveform[0].cpu().numpy().squeeze()
+        return waveform
+
+    def process_bark(self, text_input: str, voice_preset: str, generate_args: dict) -> bytes:
+        # Process the input text with the selected voice preset
+        inputs = self.processor(text_input, voice_preset=voice_preset, return_tensors="pt")
+
+        if self.use_cuda:
+            inputs = inputs.to(self.device_map)
+
+        # Generate the audio waveform
+        with torch.no_grad():
+            audio_array = self.model.generate(**inputs, **generate_args)
+            audio_array = audio_array.cpu().numpy().squeeze()
+
+        return audio_array
+
+    def process_speecht5_tts(self, text_input: str, voice_preset: str, generate_args: dict) -> bytes:
+        if not self.vocoder:
+            self.vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
+        if not self.embeddings_dataset:
+            # use the CMU arctic dataset for voice presets
+            self.embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+
+        inputs = self.processor(text_input, return_tensors="pt")
+        speaker_embeddings = torch.tensor(self.embeddings_dataset[int(voice_preset)]["xvector"]).unsqueeze(0)  # type: ignore
+
+        if self.use_cuda:
+            inputs = inputs.to(self.device_map)
+            speaker_embeddings = speaker_embeddings.to(self.device_map)  # type: ignore
+
+        with torch.no_grad():
+            # Generate speech tensor
+            speech = self.model.generate_speech(inputs["input_ids"], speaker_embeddings, vocoder=self.vocoder)
+            audio_output = speech.cpu().numpy().squeeze()
+
+        return audio_output
+
+    def process_seamless(self, text_input: str, generate_args: dict):
+        # requires tgt_lang argument
+        pass
+
+    def process_expressive(self, text_input: str, generate_args: dict):
+        pass
+
+    def initialize_pipeline(self):
+        """
+        Lazy initialization of the TTS Hugging Face pipeline.
+        """
+        if not self.hf_pipeline:
+            self.hf_pipeline = pipeline(
+                "text-to-speech",
+                model=self.model,
+                tokenizer=self.processor,
+                framework="pt",
+            )
+
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    @cherrypy.tools.allow(methods=["POST"])
+    def tts_pipeline(self, **kwargs: Any) -> Dict[str, Any]:
+        """
+        Converts text to speech using the Hugging Face pipeline.
+
+        Args:
+            **kwargs (Any): Arbitrary keyword arguments, typically containing 'text' for the input text.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the base64 encoded audio data.
+
+        Example CURL Request for synthesis:
+        ... [Provide example CURL request] ...
+        """
+        self.initialize_pipeline()  # Initialize the pipeline on first API hit
+
+        input_json = cherrypy.request.json
+        text_data = input_json.get("text")
+
+        result = self.hf_pipeline(text_data, **kwargs)  # type: ignore
+
+        # Convert audio to base64 encoded data
+        audio_base64 = base64.encode(result)  # type: ignore
+
+        return {"audio_file": audio_base64, "input": text_data}

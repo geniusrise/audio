@@ -122,3 +122,29 @@ def chunk_audio(audio_input, chunk_size, stride_left, stride_right):
         chunks.append(chunk)
 
     return chunks
+
+
+def chunk_audio_batched(audio_input, chunk_size, stride_left, stride_right):
+    """
+    Splits the audio input into overlapping chunks with specified left and right strides.
+
+    Args:
+        audio_input (torch.Tensor): The input audio tensor.
+        chunk_size (int): The size of each audio chunk.
+        stride_left (int): The size of the left stride for overlap.
+        stride_right (int): The size of the right stride for overlap.
+
+    Returns:
+        List[torch.Tensor]: List of chunked audio tensors with overlap.
+    """
+    chunks = []
+    sequence_length = audio_input.shape[-1]
+
+    for block_start in range(0, sequence_length, chunk_size):
+        chunk_end_idx = min(block_start + chunk_size + stride_right, sequence_length)
+        chunk_start_idx = max(0, block_start - stride_left)
+
+        chunk = audio_input[:, chunk_start_idx:chunk_end_idx]
+        chunks.append(chunk)
+
+    return chunks

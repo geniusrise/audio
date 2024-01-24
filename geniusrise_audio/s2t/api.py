@@ -220,11 +220,7 @@ class SpeechToTextAPI(AudioAPI):
         audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
-        chunks = (
-            chunk_audio(audio_input.squeeze(0), chunk_size, overlap_size, overlap_size)
-            if chunk_size > 0
-            else [audio_input]
-        )
+        chunks = chunk_audio(audio_input, chunk_size, overlap_size, overlap_size) if chunk_size > 0 else [audio_input]
 
         transcriptions = []
         for chunk in chunks:
@@ -257,11 +253,7 @@ class SpeechToTextAPI(AudioAPI):
         audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
-        chunks = (
-            chunk_audio(audio_input.squeeze(0), chunk_size, overlap_size, overlap_size)
-            if chunk_size > 0
-            else [audio_input]
-        )
+        chunks = chunk_audio(audio_input, chunk_size, overlap_size, overlap_size) if chunk_size > 0 else [audio_input]
 
         transcriptions = []
         for chunk in chunks:
