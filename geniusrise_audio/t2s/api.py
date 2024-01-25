@@ -124,13 +124,14 @@ class TextToSpeechAPI(AudioAPI):
             inputs = inputs.to(self.device_map)
 
         with torch.no_grad():
-            outputs = self.model(**inputs, **generate_args, min_eos_p=0.005)
+            outputs = self.model(**inputs, **generate_args)
 
         waveform = outputs.waveform[0].cpu().numpy().squeeze()
         return waveform
 
     def process_bark(self, text_input: str, voice_preset: str, generate_args: dict) -> np.ndarray:
         # Process the input text with the selected voice preset
+        # Presets here: https://suno-ai.notion.site/8b8e8749ed514b0cbf3f699013548683?v=bc67cff786b04b50b3ceb756fd05f68c
         chunks = text_input.split(".")
         audio_arrays: List[bytes] = []
         for chunk in chunks:
@@ -141,7 +142,7 @@ class TextToSpeechAPI(AudioAPI):
 
             # Generate the audio waveform
             with torch.no_grad():
-                audio_array = self.model.generate(**inputs, **generate_args)
+                audio_array = self.model.generate(**inputs, **generate_args, min_eos_p=0.05)
                 audio_array = audio_array.cpu().numpy().squeeze()
                 audio_arrays.append(audio_array)
 
