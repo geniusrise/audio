@@ -133,7 +133,7 @@ class TextToSpeechAPI(AudioAPI):
         # Process the input text with the selected voice preset
         # Presets here: https://suno-ai.notion.site/8b8e8749ed514b0cbf3f699013548683?v=bc67cff786b04b50b3ceb756fd05f68c
         chunks = text_input.split(".")
-        audio_arrays: List[bytes] = []
+        audio_arrays: List[np.ndarray] = []
         for chunk in chunks:
             inputs = self.processor(chunk, voice_preset=voice_preset, return_tensors="pt", return_attention_mask=True)
 
@@ -151,23 +151,31 @@ class TextToSpeechAPI(AudioAPI):
     def process_speecht5_tts(self, text_input: str, voice_preset: str, generate_args: dict) -> np.ndarray:
         if not self.vocoder:
             self.vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
+            if self.use_cuda:
+                self.vocoder = self.vocoder.to(self.device_map)  # type: ignore
         if not self.embeddings_dataset:
             # use the CMU arctic dataset for voice presets
-            self.embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+            self.embeddings_dataset = load_dataset(
+                "Matthijs/cmu-arctic-xvectors", split="validation", revision="01090996e2ec93b238f194db1ff9c184ed741b07"
+            )
 
-        inputs = self.processor(text_input, return_tensors="pt")
-        speaker_embeddings = torch.tensor(self.embeddings_dataset[int(voice_preset)]["xvector"]).unsqueeze(0)  # type: ignore
+        chunks = text_input.split(".")
+        audio_arrays: List[np.ndarray] = []
+        for chunk in chunks:
+            inputs = self.processor(text=chunk, return_tensors="pt")
+            speaker_embeddings = torch.tensor(self.embeddings_dataset[int(voice_preset)]["xvector"]).unsqueeze(0)  # type: ignore
 
-        if self.use_cuda:
-            inputs = inputs.to(self.device_map)
-            speaker_embeddings = speaker_embeddings.to(self.device_map)  # type: ignore
+            if self.use_cuda:
+                inputs = inputs.to(self.device_map)
+                speaker_embeddings = speaker_embeddings.to(self.device_map)  # type: ignore
 
-        with torch.no_grad():
-            # Generate speech tensor
-            speech = self.model.generate_speech(inputs["input_ids"], speaker_embeddings, vocoder=self.vocoder)
-            audio_output = speech.cpu().numpy().squeeze()
+            with torch.no_grad():
+                # Generate speech tensor
+                speech = self.model.generate_speech(inputs["input_ids"], speaker_embeddings, vocoder=self.vocoder)
+                audio_output = speech.cpu().numpy().squeeze()
+                audio_arrays.append(audio_output)
 
-        return audio_output
+        return np.concatenate(audio_arrays)
 
     # def process_seamless(self, text_input: str, generate_args: dict) -> np.ndarray:
     #     # requires tgt_lang argument
