@@ -16,7 +16,8 @@
 import base64
 import cherrypy
 import torch
-from typing import Any, Dict
+import numpy as np
+from typing import Any, Dict, List
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline, SpeechT5HifiGan
 from datasets import load_dataset
@@ -100,7 +101,7 @@ class TextToSpeechAPI(AudioAPI):
         with torch.no_grad():
             if self.model.config.model_type == "vits":
                 audio_output = self.process_mms(text_data, generate_args=generate_args)
-            elif self.model.config.model_type == "coarse_acoustics":
+            elif self.model.config.model_type == "coarse_acoustics" or self.model.config.model_type == "bark":
                 audio_output = self.process_bark(text_data, voice_preset=voice_preset, generate_args=generate_args)
             elif self.model.config.model_type == "speecht5":
                 audio_output = self.process_speecht5_tts(
@@ -108,38 +109,45 @@ class TextToSpeechAPI(AudioAPI):
                 )
 
         # Convert audio to base64 encoded data
-        audio_file = convert_waveform_to_audio_file(audio_output, output_type=output_type, sample_rate=16_000)
-        audio_base64 = base64.encode(audio_file)
+        sample_rate = (
+            self.model.generation_config.sample_rate if hasattr(self.model.generation_config, "sample_rate") else 16_000
+        )
+        audio_file = convert_waveform_to_audio_file(audio_output, format=output_type, sample_rate=sample_rate)
+        audio_base64 = base64.b64encode(audio_file)
 
-        return {"audio_file": audio_base64, "input": text_data}
+        return {"audio_file": audio_base64.decode("utf-8"), "input": text_data}
 
-    def process_mms(self, text_input: str, generate_args: dict):
+    def process_mms(self, text_input: str, generate_args: dict) -> np.ndarray:
         inputs = self.processor(text_input, return_tensors="pt")
 
         if self.use_cuda:
             inputs = inputs.to(self.device_map)
 
         with torch.no_grad():
-            outputs = self.model(**inputs, **generate_args)
+            outputs = self.model(**inputs, **generate_args, min_eos_p=0.005)
 
         waveform = outputs.waveform[0].cpu().numpy().squeeze()
         return waveform
 
-    def process_bark(self, text_input: str, voice_preset: str, generate_args: dict) -> bytes:
+    def process_bark(self, text_input: str, voice_preset: str, generate_args: dict) -> np.ndarray:
         # Process the input text with the selected voice preset
-        inputs = self.processor(text_input, voice_preset=voice_preset, return_tensors="pt")
+        chunks = text_input.split(".")
+        audio_arrays: List[bytes] = []
+        for chunk in chunks:
+            inputs = self.processor(chunk, voice_preset=voice_preset, return_tensors="pt", return_attention_mask=True)
 
-        if self.use_cuda:
-            inputs = inputs.to(self.device_map)
+            if self.use_cuda:
+                inputs = inputs.to(self.device_map)
 
-        # Generate the audio waveform
-        with torch.no_grad():
-            audio_array = self.model.generate(**inputs, **generate_args)
-            audio_array = audio_array.cpu().numpy().squeeze()
+            # Generate the audio waveform
+            with torch.no_grad():
+                audio_array = self.model.generate(**inputs, **generate_args)
+                audio_array = audio_array.cpu().numpy().squeeze()
+                audio_arrays.append(audio_array)
 
-        return audio_array
+        return np.concatenate(audio_arrays)
 
-    def process_speecht5_tts(self, text_input: str, voice_preset: str, generate_args: dict) -> bytes:
+    def process_speecht5_tts(self, text_input: str, voice_preset: str, generate_args: dict) -> np.ndarray:
         if not self.vocoder:
             self.vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
         if not self.embeddings_dataset:
@@ -160,12 +168,12 @@ class TextToSpeechAPI(AudioAPI):
 
         return audio_output
 
-    def process_seamless(self, text_input: str, generate_args: dict):
-        # requires tgt_lang argument
-        pass
+    # def process_seamless(self, text_input: str, generate_args: dict) -> np.ndarray:
+    #     # requires tgt_lang argument
+    #     pass
 
-    def process_expressive(self, text_input: str, generate_args: dict):
-        pass
+    # def process_expressive(self, text_input: str, generate_args: dict) -> np.ndarray:
+    #     pass
 
     def initialize_pipeline(self):
         """

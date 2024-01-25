@@ -14,5 +14,4 @@
 # limitations under the License.
 
 from .api import SpeechToTextAPI
-
-# from .bulk import SpeechToTextBulk
+from .bulk import SpeechToTextBulk

@@ -145,7 +145,7 @@ class SpeechToTextAPI(AudioAPI):
             raise cherrypy.HTTPError(400, "No audio data provided.")
 
         # Convert base64 encoded data to bytes
-        audio_bytes = base64.decode(audio_data)
+        audio_bytes = base64.b64decode(audio_data)
         audio_input, input_sampling_rate = decode_audio(
             audio_bytes=audio_bytes,
             model_type=self.model.config.model_type,
