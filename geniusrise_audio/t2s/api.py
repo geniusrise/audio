@@ -107,6 +107,8 @@ class TextToSpeechAPI(AudioAPI):
                 audio_output = self.process_speecht5_tts(
                     text_data, voice_preset=voice_preset, generate_args=generate_args
                 )
+            elif self.model.config.model_type == "seamless_m4t_v2":
+                audio_output = self.process_seamless(text_data, voice_preset=voice_preset, generate_args=generate_args)
 
         # Convert audio to base64 encoded data
         sample_rate = (
@@ -177,12 +179,26 @@ class TextToSpeechAPI(AudioAPI):
 
         return np.concatenate(audio_arrays)
 
-    # def process_seamless(self, text_input: str, generate_args: dict) -> np.ndarray:
-    #     # requires tgt_lang argument
-    #     pass
+    def process_seamless(self, text_input: str, voice_preset: str, generate_args: dict) -> np.ndarray:
+        # Splitting the input text into chunks based on full stops to manage long text inputs
+        chunks = text_input.split(".")
+        audio_arrays: List[np.ndarray] = []
 
-    # def process_expressive(self, text_input: str, generate_args: dict) -> np.ndarray:
-    #     pass
+        for chunk in chunks:
+            inputs = self.processor(text=chunk, return_tensors="pt", src_lang="eng")
+
+            if self.use_cuda:
+                inputs = inputs.to(self.device_map)
+
+            # Generate the audio waveform
+            with torch.no_grad():
+                # Seamless M4T v2 specific generation code
+                outputs = self.model.generate(inputs.input_ids, speaker_id=int(voice_preset), **generate_args)[0]
+
+            audio_array = outputs.cpu().numpy().squeeze()
+            audio_arrays.append(audio_array)
+
+        return np.concatenate(audio_arrays)
 
     def initialize_pipeline(self):
         """
