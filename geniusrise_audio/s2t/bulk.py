@@ -228,15 +228,29 @@ class SpeechToTextBulk(AudioBulk):
             with torch.no_grad():
                 if self.model.config.model_type == "whisper":
                     transcriptions = self.process_whisper(
-                        input_values, model_sampling_rate, processor_args, chunk_size, overlap_size, generation_args
+                        torch.stack(input_values, dim=0),
+                        model_sampling_rate,
+                        processor_args,
+                        chunk_size,
+                        overlap_size,
+                        generation_args,
                     )
                 elif self.model.config.model_type == "seamless_m4t_v2":
                     transcriptions = self.process_seamless(
-                        input_values, model_sampling_rate, processor_args, chunk_size, overlap_size, generation_args
+                        torch.stack(input_values, dim=0),
+                        model_sampling_rate,
+                        processor_args,
+                        chunk_size,
+                        overlap_size,
+                        generation_args,
                     )
                 elif self.model.config.model_type == "wav2vec2":
                     transcriptions = self.process_wav2vec2(
-                        input_values, model_sampling_rate, processor_args, chunk_size, overlap_size
+                        torch.stack(input_values, dim=0),
+                        model_sampling_rate,
+                        processor_args,
+                        chunk_size,
+                        overlap_size,
                     )
 
             self._save_transcriptions(
@@ -291,6 +305,7 @@ class SpeechToTextBulk(AudioBulk):
 
         return results
 
+    # TODO: do these in batches (like true batches in GPU)
     def process_seamless(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
     ):
@@ -331,6 +346,7 @@ class SpeechToTextBulk(AudioBulk):
             transcriptions.append(" ".join([x.strip() for x in _transcription]))
         return "".join(transcriptions)
 
+    # TODO: do these in batches (like true batches in GPU)
     def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
         """
         Process audio input with the Wav2Vec2 model.
