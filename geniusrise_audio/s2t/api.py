@@ -167,7 +167,7 @@ class SpeechToTextAPI(AudioAPI):
                     audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size
                 )
 
-        return {"transcription": transcription}
+        return {"transcriptions": transcription}
 
     def process_whisper(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
@@ -209,7 +209,7 @@ class SpeechToTextAPI(AudioAPI):
             }
             for t, l in zip(segments, logits["segments"][0])
         ]
-        return {"text": transcription, "segments": timestamps}
+        return {"transcription": transcription, "segments": timestamps}
 
     def process_seamless(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
@@ -222,8 +222,8 @@ class SpeechToTextAPI(AudioAPI):
         # Split audio input into chunks with overlap
         chunks = chunk_audio(audio_input, chunk_size, overlap_size, overlap_size) if chunk_size > 0 else [audio_input]
 
-        transcriptions = []
-        for chunk in chunks:
+        segments = []
+        for chunk_id, chunk in enumerate(chunks):
             # Preprocess and transcribe
             input_values = self.processor(
                 audios=chunk,
@@ -241,8 +241,16 @@ class SpeechToTextAPI(AudioAPI):
 
             # Decode the model output
             _transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
-            transcriptions.append(" ".join([x.strip() for x in _transcription]))
-        return "".join(transcriptions)
+            segments.append(
+                {
+                    "tokens": " ".join([x.strip() for x in _transcription]),
+                    "start": (chunk_id - 1) * overlap_size,
+                    "end": chunk_id * overlap_size,
+                }
+            )
+
+        transcription = " ".join([s["tokens"].trim() for s in segments])
+        return {"transcription": transcription, "segments": segments}
 
     def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
         """
@@ -255,8 +263,8 @@ class SpeechToTextAPI(AudioAPI):
         # Split audio input into chunks with overlap
         chunks = chunk_audio(audio_input, chunk_size, overlap_size, overlap_size) if chunk_size > 0 else [audio_input]
 
-        transcriptions = []
-        for chunk in chunks:
+        segments = []
+        for chunk_id, chunk in enumerate(chunks):
             processed = self.processor(
                 chunk,
                 return_tensors="pt",
@@ -285,9 +293,16 @@ class SpeechToTextAPI(AudioAPI):
 
             # Decode each chunk
             chunk_transcription = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)
-            transcriptions.append(chunk_transcription[0])
+            segments.append(
+                {
+                    "tokens": chunk_transcription[0],
+                    "start": (chunk_id - 1) * overlap_size,
+                    "end": chunk_id * overlap_size,
+                }
+            )
 
-        return " ".join(transcriptions)
+        transcription = " ".join([s["tokens"].trim() for s in segments])
+        return {"transcription": transcription, "segments": segments}
 
     def initialize_pipeline(self):
         """

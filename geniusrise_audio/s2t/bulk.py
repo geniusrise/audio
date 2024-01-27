@@ -210,7 +210,7 @@ class SpeechToTextBulk(AudioBulk):
 
         # process batchwise
         transcriptions = []
-        batch_idx = 0
+        chunk_idx = 0
         for i in range(0, len(audio_files), self.batch_size):
             batch = audio_files[i : i + self.batch_size]
 
@@ -254,9 +254,9 @@ class SpeechToTextBulk(AudioBulk):
                     )
 
             self._save_transcriptions(
-                transcriptions=transcriptions, filenames=batch, batch_idx=batch_idx, output_path=output_path
+                transcriptions=transcriptions, filenames=batch, chunk_idx=chunk_idx, output_path=output_path
             )
-            batch_idx += 1
+            chunk_idx += 1
 
     def process_whisper(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
@@ -325,7 +325,10 @@ class SpeechToTextBulk(AudioBulk):
 
         transcriptions = []
         segments = []
-        for chunk in chunks:
+        for chunk_id, chunk in enumerate(chunks):
+            if chunk_id >= len(segments):
+                segments.append([])
+
             # Preprocess and transcribe
             input_values = self.processor(
                 audios=chunk,
@@ -342,23 +345,37 @@ class SpeechToTextBulk(AudioBulk):
             logits = self.model.generate(**input_values, **generate_args)[0]
 
             # Decode the model output
-            _transcriptions = self.processor.batch_decode(logits, skip_special_tokens=True)
-            for batch_id, tokens in enumerate(_transcriptions):
+            chunk_transcriptions = self.processor.batch_decode(logits, skip_special_tokens=True)
+
+            # Decode each chunk in a batched manner
+            for batch_id, tokens in enumerate(chunk_transcriptions):
                 sentence = " ".join([x.strip() for x in tokens])
                 # since the model does not return timing, at least we can align it with chunks
                 segment = {
                     "tokens": sentence,
-                    "start": batch_id * overlap_size,
-                    "end": (batch_id - 1) * overlap_size,
+                    "start": (chunk_id - 1) * overlap_size,
+                    "end": chunk_id * overlap_size,
                 }
-                if not segments or len(segments) - 1 < batch_id:
-                    segments.append([segment])
-                else:
-                    segments[batch_id].append(segment)
+                # Ensure there's a list to append to for the batch_id
+                if batch_id >= len(segments[chunk_id]):
+                    while batch_id >= len(segments[chunk_id]):
+                        segments[chunk_id].append([])
 
-        for segment in segments:
-            sentence = " ".join([c["tokens"].trim() for c in segment])
-            transcriptions.append({"text": sentence, "segments": segment})
+                # Append the segment
+                segments[chunk_id][batch_id].append(segment)
+
+            # Update transcriptions with the latest sentence and its segments for this chunk and batch_id
+            if chunk_id >= len(transcriptions):
+                while batch_id >= len(transcriptions):
+                    transcriptions.append({})
+
+            transcriptions[chunk_id] = {
+                "text": " ".join(
+                    [segments[chunk_id][batch_id]["tokens"] for batch_id in range(chunk_transcriptions.shape[0])]
+                ),
+                "segments": [segments[chunk_id][batch_id] for batch_id in range(chunk_transcriptions.shape[0])],
+            }
+
         return transcriptions
 
     def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
@@ -381,7 +398,10 @@ class SpeechToTextBulk(AudioBulk):
 
         transcriptions = []
         segments = []
-        for chunk in chunks:
+        for chunk_id, chunk in enumerate(chunks):
+            if chunk_id >= len(segments):
+                segments.append([])
+
             processed = self.processor(
                 chunk,
                 return_tensors="pt",
@@ -409,26 +429,39 @@ class SpeechToTextBulk(AudioBulk):
             predicted_ids = torch.argmax(logits, dim=-1)
 
             # Decode each chunk
-            chunk_transcription = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
-            for batch_id, tokens in enumerate(chunk_transcription):
-                sentence = " ".join([x.strip() for x in tokens])
+            chunk_transcriptions = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)
+
+            # Decode each chunk in a batched manner
+            for batch_id, tokens in enumerate(chunk_transcriptions):
                 # since the model does not return timing, at least we can align it with chunks
                 segment = {
-                    "tokens": sentence,
-                    "start": batch_id * overlap_size,
-                    "end": (batch_id - 1) * overlap_size,
+                    "tokens": tokens,
+                    "start": (chunk_id - 1) * overlap_size,
+                    "end": chunk_id * overlap_size,
                 }
-                if not segments or len(segments) - 1 < batch_id:
-                    segments.append([segment])
-                else:
-                    segments[batch_id].append(segment)
+                # Ensure there's a list to append to for the batch_id
+                if batch_id >= len(segments[chunk_id]):
+                    while batch_id >= len(segments[chunk_id]):
+                        segments[chunk_id].append([])
 
-        for segment in segments:
-            sentence = " ".join([c["tokens"].trim() for c in segment])
-            transcriptions.append({"text": sentence, "segments": segment})
+                # Append the segment
+                segments[chunk_id][batch_id].append(segment)
+
+            # Update transcriptions with the latest sentence and its segments for this chunk and batch_id
+            if chunk_id >= len(transcriptions):
+                while batch_id >= len(transcriptions):
+                    transcriptions.append({})
+
+            transcriptions[chunk_id] = {
+                "text": " ".join(
+                    [segments[chunk_id][batch_id]["tokens"] for batch_id in range(chunk_transcriptions.shape[0])]
+                ),
+                "segments": [segments[chunk_id][batch_id] for batch_id in range(chunk_transcriptions.shape[0])],
+            }
+
         return transcriptions
 
-    def _save_transcriptions(self, filenames: List[str], transcriptions: List[str], batch_idx: int, output_path: str):
+    def _save_transcriptions(self, filenames: List[str], transcriptions: List[str], chunk_idx: int, output_path: str):
         """
         Saves the transcriptions to the specified output folder.
 
@@ -436,7 +469,7 @@ class SpeechToTextBulk(AudioBulk):
             filenames (List[str]): List of filenames of the transcribed audio files.
             transcriptions (List[str]): List of transcribed texts.
             output_path (str): Path to the output folder.
-            batch_idx (int): Index of the current batch (for naming files).
+            chunk_idx (int): Index of the current batch (for naming files).
         """
         data_to_save = [
             {"input": filename, "prediction": transcription}
@@ -444,7 +477,7 @@ class SpeechToTextBulk(AudioBulk):
         ]
 
         with open(
-            os.path.join(output_path, f"predictions-{batch_idx}-{str(uuid.uuid4())}.json"),
+            os.path.join(output_path, f"predictions-{chunk_idx}-{str(uuid.uuid4())}.json"),
             "w",
         ) as f:
             json.dump(data_to_save, f)
