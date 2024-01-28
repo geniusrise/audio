@@ -497,5 +497,5 @@ class TextToSpeechBulk(AudioBulk):
         # Assuming the speech tensor is in the format expected by torchaudio
         for result in results:
             file_name = result["text"].replace(" ", "_") + "." + self.output_type
-            with open(f"{self.output.output_folder}/{file_name}", "wb") as f:
+            with open(f"{self.output.output_folder}/{file_name[:20]}", "wb") as f:
                 f.write(result["audio"])
