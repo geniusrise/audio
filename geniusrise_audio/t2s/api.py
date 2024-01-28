@@ -98,17 +98,14 @@ class TextToSpeechAPI(AudioAPI):
             raise cherrypy.HTTPError(400, "No text data provided.")
 
         # Perform inference
-        with torch.no_grad():
-            if self.model.config.model_type == "vits":
-                audio_output = self.process_mms(text_data, generate_args=generate_args)
-            elif self.model.config.model_type == "coarse_acoustics" or self.model.config.model_type == "bark":
-                audio_output = self.process_bark(text_data, voice_preset=voice_preset, generate_args=generate_args)
-            elif self.model.config.model_type == "speecht5":
-                audio_output = self.process_speecht5_tts(
-                    text_data, voice_preset=voice_preset, generate_args=generate_args
-                )
-            elif self.model.config.model_type == "seamless_m4t_v2":
-                audio_output = self.process_seamless(text_data, voice_preset=voice_preset, generate_args=generate_args)
+        if self.model.config.model_type == "vits":
+            audio_output = self.process_mms(text_data, generate_args=generate_args)
+        elif self.model.config.model_type == "coarse_acoustics" or self.model.config.model_type == "bark":
+            audio_output = self.process_bark(text_data, voice_preset=voice_preset, generate_args=generate_args)
+        elif self.model.config.model_type == "speecht5":
+            audio_output = self.process_speecht5_tts(text_data, voice_preset=voice_preset, generate_args=generate_args)
+        elif self.model.config.model_type == "seamless_m4t_v2":
+            audio_output = self.process_seamless(text_data, voice_preset=voice_preset, generate_args=generate_args)
 
         # Convert audio to base64 encoded data
         sample_rate = (
