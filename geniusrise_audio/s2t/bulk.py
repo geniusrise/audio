@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 import torch
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor
-from geniusrise_audio.s2t.util import whisper_alignment_heads, decode_audio, chunk_audio_batched
+from geniusrise_audio.s2t.util import whisper_alignment_heads, decode_audio, chunk_audio
 from geniusrise_audio.base import AudioBulk
 
 
@@ -117,7 +117,6 @@ class SpeechToTextBulk(AudioBulk):
         compile: bool = True,
         batch_size: int = 8,
         notification_email: Optional[str] = None,
-        input_sampling_rate: int = 48_000,
         model_sampling_rate: int = 16_000,
         chunk_size: int = 0,
         overlap_size: int = 0,
@@ -151,7 +150,6 @@ class SpeechToTextBulk(AudioBulk):
         self.compile = compile
         self.batch_size = batch_size
         self.notification_email = notification_email
-        self.input_sampling_rate = input_sampling_rate
         self.model_sampling_rate = model_sampling_rate
         self.chunk_size = chunk_size
         self.overlap_size = overlap_size
@@ -209,12 +207,10 @@ class SpeechToTextBulk(AudioBulk):
             audio_files.append(filepath)
 
         # process batchwise
-        transcriptions = []
-        chunk_idx = 0
         for i in range(0, len(audio_files), self.batch_size):
             batch = audio_files[i : i + self.batch_size]
 
-            input_values = []
+            results = []
             for audio_file in batch:
                 # Load and preprocess audio
                 audio_input, sampling_rate = decode_audio(
@@ -222,41 +218,39 @@ class SpeechToTextBulk(AudioBulk):
                     model_type=self.model.config.model_type,
                     model_sampling_rate=model_sampling_rate,
                 )
-                input_values.append(audio_input.squeeze(0))
 
-            # Perform inference
-            with torch.no_grad():
                 if self.model.config.model_type == "whisper":
                     transcriptions = self.process_whisper(
-                        input_values,
+                        audio_input,
                         model_sampling_rate,
                         processor_args,
                         chunk_size,
                         overlap_size,
                         generation_args,
                     )
+                    results.append(transcriptions)
                 elif self.model.config.model_type == "seamless_m4t_v2":
                     transcriptions = self.process_seamless(
-                        input_values,
+                        audio_input,
                         model_sampling_rate,
                         processor_args,
                         chunk_size,
                         overlap_size,
                         generation_args,
                     )
+                    results.append(transcriptions)
                 elif self.model.config.model_type == "wav2vec2":
                     transcriptions = self.process_wav2vec2(
-                        input_values,
+                        audio_input,
                         model_sampling_rate,
                         processor_args,
                         chunk_size,
                         overlap_size,
                     )
+                    results.append(transcriptions)
 
-            self._save_transcriptions(
-                transcriptions=transcriptions, filenames=batch, chunk_idx=chunk_idx, output_path=output_path
-            )
-            chunk_idx += 1
+            self._save_transcriptions(transcriptions=results, filenames=batch, chunk_idx=i, output_path=output_path)
+        self.done()
 
     def process_whisper(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
@@ -269,7 +263,7 @@ class SpeechToTextBulk(AudioBulk):
 
         # Preprocess and transcribe
         input_values = self.processor(
-            torch.stack(audio_input, dim=0),
+            audio_input.squeeze(0),
             return_tensors="pt",
             sampling_rate=model_sampling_rate,
             truncation=False,
@@ -284,14 +278,18 @@ class SpeechToTextBulk(AudioBulk):
 
         # TODO: make generate generic
         logits = self.model.generate(
-            **input_values, **generate_args, return_timestamps=True, return_token_timestamps=True, return_segments=True
+            **input_values,
+            **generate_args,  # , return_timestamps=True, return_token_timestamps=True, return_segments=True
         )
 
-        results = []
-        for i in range(input_values.shape[0]):
-            transcription = self.processor.batch_decode(logits["sequences"][i], skip_special_tokens=True)
+        # Decode the model output
+        if type(logits) is torch.Tensor:
+            transcription = self.processor.batch_decode(logits[0], skip_special_tokens=True)
+            return {"transcription": "".join(transcription), "segments": []}
+        else:
+            transcription = self.processor.batch_decode(logits["sequences"], skip_special_tokens=True)
             segments = self.processor.batch_decode(
-                [x["tokens"] for x in logits["segments"][i]], skip_special_tokens=True
+                [x["tokens"] for x in logits["segments"][0]], skip_special_tokens=True
             )
             timestamps = [
                 {
@@ -299,11 +297,9 @@ class SpeechToTextBulk(AudioBulk):
                     "start": l["start"].cpu().numpy().tolist(),
                     "end": l["end"].cpu().numpy().tolist(),
                 }
-                for t, l in zip(segments, logits["segments"][i])
+                for t, l in zip(segments, logits["segments"][0])
             ]
-            results.append({"text": transcription, "segments": timestamps})
-
-        return results
+            return {"transcription": transcription, "segments": timestamps}
 
     def process_seamless(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
@@ -311,24 +307,13 @@ class SpeechToTextBulk(AudioBulk):
         """
         Process audio input with the Whisper model.
         """
-        max_length = max([len(x) for x in audio_input])
-        audio_input_padded = [torch.zeros(max_length) for x in audio_input]
-        audio_input_padded = [x.copy_(y) for x, y in zip(audio_input_padded, audio_input)]
-        audio_inputs = torch.stack(audio_input_padded, dim=0)
+        audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
-        chunks = (
-            chunk_audio_batched(audio_inputs, chunk_size, overlap_size, overlap_size)
-            if chunk_size > 0
-            else [audio_inputs]
-        )
+        chunks = chunk_audio(audio_input, chunk_size, overlap_size, overlap_size) if chunk_size > 0 else [audio_input]
 
-        transcriptions = []
         segments = []
         for chunk_id, chunk in enumerate(chunks):
-            if chunk_id >= len(segments):
-                segments.append([])
-
             # Preprocess and transcribe
             input_values = self.processor(
                 audios=chunk,
@@ -345,38 +330,17 @@ class SpeechToTextBulk(AudioBulk):
             logits = self.model.generate(**input_values, **generate_args)[0]
 
             # Decode the model output
-            chunk_transcriptions = self.processor.batch_decode(logits, skip_special_tokens=True)
-
-            # Decode each chunk in a batched manner
-            for batch_id, tokens in enumerate(chunk_transcriptions):
-                sentence = " ".join([x.strip() for x in tokens])
-                # since the model does not return timing, at least we can align it with chunks
-                segment = {
-                    "tokens": sentence,
-                    "start": (chunk_id - 1) * overlap_size,
-                    "end": chunk_id * overlap_size,
+            _transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
+            segments.append(
+                {
+                    "tokens": " ".join([x.strip() for x in _transcription]).strip(),
+                    "start": chunk_id * overlap_size,
+                    "end": (chunk_id + 1) * overlap_size,
                 }
-                # Ensure there's a list to append to for the batch_id
-                if batch_id >= len(segments[chunk_id]):
-                    while batch_id >= len(segments[chunk_id]):
-                        segments[chunk_id].append([])
+            )
 
-                # Append the segment
-                segments[chunk_id][batch_id].append(segment)
-
-            # Update transcriptions with the latest sentence and its segments for this chunk and batch_id
-            if chunk_id >= len(transcriptions):
-                while batch_id >= len(transcriptions):
-                    transcriptions.append({})
-
-            transcriptions[chunk_id] = {
-                "text": " ".join(
-                    [segments[chunk_id][batch_id]["tokens"] for batch_id in range(chunk_transcriptions.shape[0])]
-                ),
-                "segments": [segments[chunk_id][batch_id] for batch_id in range(chunk_transcriptions.shape[0])],
-            }
-
-        return transcriptions
+        transcription = " ".join([s["tokens"].strip() for s in segments])
+        return {"transcription": transcription, "segments": segments}
 
     def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
         """
@@ -384,24 +348,13 @@ class SpeechToTextBulk(AudioBulk):
         """
         # TensorFloat32 tensor cores for float32 matrix multiplication availabl
         torch.set_float32_matmul_precision("high")
-        max_length = max([len(x) for x in audio_input])
-        audio_input_padded = [torch.zeros(max_length) for x in audio_input]
-        audio_input_padded = [x.copy_(y) for x, y in zip(audio_input_padded, audio_input)]
-        audio_inputs = torch.stack(audio_input_padded, dim=0)
+        audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
-        chunks = (
-            chunk_audio_batched(audio_inputs, chunk_size, overlap_size, overlap_size)
-            if chunk_size > 0
-            else [audio_inputs]
-        )
+        chunks = chunk_audio(audio_input, chunk_size, overlap_size, overlap_size) if chunk_size > 0 else [audio_input]
 
-        transcriptions = []
         segments = []
         for chunk_id, chunk in enumerate(chunks):
-            if chunk_id >= len(segments):
-                segments.append([])
-
             processed = self.processor(
                 chunk,
                 return_tensors="pt",
@@ -429,37 +382,17 @@ class SpeechToTextBulk(AudioBulk):
             predicted_ids = torch.argmax(logits, dim=-1)
 
             # Decode each chunk
-            chunk_transcriptions = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)
-
-            # Decode each chunk in a batched manner
-            for batch_id, tokens in enumerate(chunk_transcriptions):
-                # since the model does not return timing, at least we can align it with chunks
-                segment = {
-                    "tokens": tokens,
-                    "start": (chunk_id - 1) * overlap_size,
-                    "end": chunk_id * overlap_size,
+            chunk_transcription = self.processor.batch_decode(predicted_ids, skip_special_tokens=True)
+            segments.append(
+                {
+                    "tokens": chunk_transcription[0],
+                    "start": chunk_id * overlap_size,
+                    "end": (chunk_id + 1) * overlap_size,
                 }
-                # Ensure there's a list to append to for the batch_id
-                if batch_id >= len(segments[chunk_id]):
-                    while batch_id >= len(segments[chunk_id]):
-                        segments[chunk_id].append([])
+            )
 
-                # Append the segment
-                segments[chunk_id][batch_id].append(segment)
-
-            # Update transcriptions with the latest sentence and its segments for this chunk and batch_id
-            if chunk_id >= len(transcriptions):
-                while batch_id >= len(transcriptions):
-                    transcriptions.append({})
-
-            transcriptions[chunk_id] = {
-                "text": " ".join(
-                    [segments[chunk_id][batch_id]["tokens"] for batch_id in range(chunk_transcriptions.shape[0])]
-                ),
-                "segments": [segments[chunk_id][batch_id] for batch_id in range(chunk_transcriptions.shape[0])],
-            }
-
-        return transcriptions
+        transcription = " ".join([s["tokens"].strip() for s in segments])
+        return {"transcription": transcription, "segments": segments}
 
     def _save_transcriptions(self, filenames: List[str], transcriptions: List[str], chunk_idx: int, output_path: str):
         """

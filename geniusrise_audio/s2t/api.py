@@ -195,21 +195,28 @@ class SpeechToTextAPI(AudioAPI):
 
         # TODO: make generate generic
         logits = self.model.generate(
-            **input_values, **generate_args, return_timestamps=True, return_token_timestamps=True, return_segments=True
+            **input_values,
+            **generate_args,  # , return_timestamps=True, return_token_timestamps=True, return_segments=True
         )
 
         # Decode the model output
-        transcription = self.processor.batch_decode(logits["sequences"], skip_special_tokens=True)
-        segments = self.processor.batch_decode([x["tokens"] for x in logits["segments"][0]], skip_special_tokens=True)
-        timestamps = [
-            {
-                "tokens": t,
-                "start": l["start"].cpu().numpy().tolist(),
-                "end": l["end"].cpu().numpy().tolist(),
-            }
-            for t, l in zip(segments, logits["segments"][0])
-        ]
-        return {"transcription": transcription, "segments": timestamps}
+        if type(logits) is torch.Tensor:
+            transcription = self.processor.batch_decode(logits[0], skip_special_tokens=True)
+            return {"transcription": "".join(transcription), "segments": []}
+        else:
+            transcription = self.processor.batch_decode(logits["sequences"], skip_special_tokens=True)
+            segments = self.processor.batch_decode(
+                [x["tokens"] for x in logits["segments"][0]], skip_special_tokens=True
+            )
+            timestamps = [
+                {
+                    "tokens": t,
+                    "start": l["start"].cpu().numpy().tolist(),
+                    "end": l["end"].cpu().numpy().tolist(),
+                }
+                for t, l in zip(segments, logits["segments"][0])
+            ]
+            return {"transcription": transcription, "segments": timestamps}
 
     def process_seamless(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
