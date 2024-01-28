@@ -31,7 +31,6 @@ from pyarrow import feather
 from pyarrow import parquet as pq
 from transformers import AutoModelForCTC, AutoProcessor, SpeechT5HifiGan
 from geniusrise_audio.t2s.util import convert_waveform_to_audio_file
-import base64
 
 from geniusrise_audio.base import AudioBulk
 
@@ -402,9 +401,8 @@ class TextToSpeechBulk(AudioBulk):
                 else 16_000
             )
             audio_file = convert_waveform_to_audio_file(audio_output, format=self.output_type, sample_rate=sample_rate)
-            audio_base64 = base64.b64encode(audio_file)
 
-            results.append({"text": text_data, "audio": audio_base64})
+            results.append({"text": text_data, "audio": audio_file})
 
         self.save_speech_to_wav(results, batch_idx)
 
