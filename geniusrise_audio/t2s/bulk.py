@@ -23,7 +23,6 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import numpy as np
 import torch
-import torchaudio
 import yaml  # type: ignore
 from datasets import Dataset, load_from_disk, load_dataset
 from geniusrise import BatchInput, BatchOutput, State
@@ -498,6 +497,5 @@ class TextToSpeechBulk(AudioBulk):
         # Assuming the speech tensor is in the format expected by torchaudio
         for result in results:
             file_name = result["text"].replace(" ", "_") + "." + self.output_type
-            torchaudio.save(
-                f"{self.output.output_folder}/{file_name}", result["audio"], sample_rate=self.model_sampling_rate
-            )
+            with open(f"{self.output.output_folder}/{file_name}", "wb") as f:
+                f.write(result["audio"])
