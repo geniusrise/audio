@@ -243,13 +243,13 @@ class SpeechToTextAPI(AudioAPI):
             _transcription = self.processor.batch_decode(logits, skip_special_tokens=True)
             segments.append(
                 {
-                    "tokens": " ".join([x.strip() for x in _transcription]),
-                    "start": (chunk_id - 1) * overlap_size,
-                    "end": chunk_id * overlap_size,
+                    "tokens": " ".join([x.strip() for x in _transcription]).strip(),
+                    "start": chunk_id * overlap_size,
+                    "end": (chunk_id + 1) * overlap_size,
                 }
             )
 
-        transcription = " ".join([s["tokens"].trim() for s in segments])
+        transcription = " ".join([s["tokens"].strip() for s in segments])
         return {"transcription": transcription, "segments": segments}
 
     def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
@@ -257,7 +257,7 @@ class SpeechToTextAPI(AudioAPI):
         Process audio input with the Wav2Vec2 model.
         """
         # TensorFloat32 tensor cores for float32 matrix multiplication availabl
-        # torch.set_float32_matmul_precision("high")
+        torch.set_float32_matmul_precision("high")
         audio_input = audio_input.squeeze(0)
 
         # Split audio input into chunks with overlap
@@ -296,12 +296,12 @@ class SpeechToTextAPI(AudioAPI):
             segments.append(
                 {
                     "tokens": chunk_transcription[0],
-                    "start": (chunk_id - 1) * overlap_size,
-                    "end": chunk_id * overlap_size,
+                    "start": chunk_id * overlap_size,
+                    "end": (chunk_id + 1) * overlap_size,
                 }
             )
 
-        transcription = " ".join([s["tokens"].trim() for s in segments])
+        transcription = " ".join([s["tokens"].strip() for s in segments])
         return {"transcription": transcription, "segments": segments}
 
     def initialize_pipeline(self):
