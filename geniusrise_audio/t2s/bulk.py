@@ -275,6 +275,7 @@ class TextToSpeechBulk(AudioBulk):
         max_length: int = 512,
         output_type: str = "mp3",
         voice_preset: str = "",
+        model_sampling_rate: int = 16_000,
         **kwargs: Any,
     ) -> None:
         """
@@ -309,6 +310,7 @@ class TextToSpeechBulk(AudioBulk):
         self.max_length = max_length
         self.output_type = output_type
         self.voice_preset = voice_preset
+        self.model_sampling_rate = model_sampling_rate
 
         if ":" in model_name:
             model_revision = model_name.split(":")[1]
