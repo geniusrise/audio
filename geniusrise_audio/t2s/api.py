@@ -182,7 +182,14 @@ class TextToSpeechAPI(AudioAPI):
         audio_arrays: List[np.ndarray] = []
 
         for chunk in chunks:
-            inputs = self.processor(text=chunk, return_tensors="pt", src_lang="eng")
+            inputs = self.processor(
+                text=chunk,
+                return_tensors="pt",
+                src_lang="eng" if "src_lang" not in generate_args else generate_args["src_lang"],
+            )
+
+            if "src_lang" in generate_args:
+                del generate_args["src_lang"]
 
             if self.use_cuda:
                 inputs = inputs.to(self.device_map)

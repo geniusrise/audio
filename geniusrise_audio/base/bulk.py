@@ -86,6 +86,8 @@ class AudioBulk(Bolt):
         max_memory: Dict[int, str] = {0: "24GB"},
         torchscript: bool = False,
         compile: bool = True,
+        flash_attention: bool = False,
+        better_transformers: bool = False,
         **model_args: Any,
     ) -> Tuple[AutoModelForAudioClassification, AutoFeatureExtractor]:
         """
@@ -105,6 +107,8 @@ class AudioBulk(Bolt):
             max_memory (Dict[int, str]): Maximum memory allocation for the model.
             torchscript (bool): Enable TorchScript for model optimization.
             compile (bool): Enable Torch JIT compilation.
+            flash_attention (bool): Flag to enable Flash Attention optimization for faster processing.
+            better_transformers (bool): Flag to enable Better Transformers optimization for faster processing.
             **model_args (Any): Additional arguments for model loading.
 
         Returns:
