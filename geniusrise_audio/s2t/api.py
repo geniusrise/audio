@@ -38,6 +38,7 @@ class SpeechToTextAPI(AudioAPI):
             Transcribes the given audio input to text using the speech-to-text model.
 
     Example CLI Usage:
+
     ```bash
     genius SpeechToTextAPI rise \
         batch \

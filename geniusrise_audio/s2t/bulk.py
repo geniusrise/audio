@@ -39,6 +39,7 @@ class SpeechToTextBulk(AudioBulk):
             Transcribes a batch of audio files to text.
 
     Example CLI Usage:
+
     ```bash
     genius SpeechToTextBulk rise \
         batch \

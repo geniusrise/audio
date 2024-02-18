@@ -48,6 +48,7 @@ class TextToSpeechBulk(AudioBulk):
             Synthesizes speech from a batch of text inputs.
 
     Example CLI Usage:
+
     ```bash
     genius TextToSpeechBulk rise \
         batch \

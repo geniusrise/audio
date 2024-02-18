@@ -17,9 +17,12 @@ import io
 import soundfile as sf
 import pydub
 import torch
+import numpy as np
 
 
-def convert_waveform_to_audio_file(waveform: torch.Tensor, format: str = "wav", sample_rate: int = 16_000) -> bytes:
+def convert_waveform_to_audio_file(
+    waveform: torch.Tensor | np.ndarray, format: str = "wav", sample_rate: int = 16_000
+) -> bytes:
     """
     Convert an audio waveform tensor to a sound file in various formats.
 
