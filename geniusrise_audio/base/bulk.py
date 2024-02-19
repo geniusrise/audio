@@ -20,6 +20,7 @@ import transformers
 from geniusrise import BatchInput, BatchOutput, Bolt, State
 from geniusrise.logging import setup_logger
 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification, AutoProcessor, AutoConfig
+from optimum.bettertransformer import BetterTransformer
 
 from geniusrise_audio.base.communication import send_email
 
@@ -85,7 +86,7 @@ class AudioBulk(Bolt):
         device_map: Union[str, Dict, None] = "auto",
         max_memory: Dict[int, str] = {0: "24GB"},
         torchscript: bool = False,
-        compile: bool = True,
+        compile: bool = False,
         flash_attention: bool = False,
         better_transformers: bool = False,
         **model_args: Any,
@@ -195,6 +196,9 @@ class AudioBulk(Bolt):
         model = model.to(device_map)
         if compile:
             model = torch.compile(model)
+
+        if better_transformers:
+            model = BetterTransformer.transform(model, keep_original_model=True)
 
         # Set to evaluation mode for inference
         model.eval()
