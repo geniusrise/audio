@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from typing import Any, Dict, Optional, Tuple, Union
-
+import os
 import torch
 import transformers
 from geniusrise import BatchInput, BatchOutput, Bolt, State
@@ -126,36 +126,71 @@ class AudioBulk(Bolt):
         # Load the model and processor
         FeatureExtractorClass = getattr(transformers, processor_class)
         config = AutoConfig.from_pretrained(processor_name, revision=processor_revision)
-        processor = FeatureExtractorClass.from_pretrained(processor_name, revision=processor_revision)
+
+        if model_name == "local":
+            processor = FeatureExtractorClass.from_pretrained(
+                os.path.join(self.input.get(), "/model"), torch_dtype=torch_dtype
+            )
+        else:
+            processor = FeatureExtractorClass.from_pretrained(
+                processor_name, revision=processor_revision, torch_dtype=torch_dtype
+            )
 
         ModelClass = getattr(transformers, model_class)
         if quantization == 8:
-            model = ModelClass.from_pretrained(
-                model_name,
-                revision=model_revision,
-                max_memory=max_memory,
-                load_in_8bit=True,
-                config=config,
-                **model_args,
-            )
+            if model_name == "local":
+                model = ModelClass.from_pretrained(
+                    os.path.join(self.input.get(), "/model"),
+                    max_memory=max_memory,
+                    load_in_8bit=True,
+                    config=config,
+                    **model_args,
+                )
+            else:
+                model = ModelClass.from_pretrained(
+                    model_name,
+                    revision=model_revision,
+                    max_memory=max_memory,
+                    load_in_8bit=True,
+                    config=config,
+                    **model_args,
+                )
         elif quantization == 4:
-            model = ModelClass.from_pretrained(
-                model_name,
-                revision=model_revision,
-                max_memory=max_memory,
-                load_in_4bit=True,
-                config=config,
-                **model_args,
-            )
+            if model_name == "local":
+                model = ModelClass.from_pretrained(
+                    os.path.join(self.input.get(), "/model"),
+                    max_memory=max_memory,
+                    load_in_4bit=True,
+                    config=config,
+                    **model_args,
+                )
+            else:
+                model = ModelClass.from_pretrained(
+                    model_name,
+                    revision=model_revision,
+                    max_memory=max_memory,
+                    load_in_4bit=True,
+                    config=config,
+                    **model_args,
+                )
         else:
-            model = ModelClass.from_pretrained(
-                model_name,
-                revision=model_revision,
-                torch_dtype=torch_dtype,
-                max_memory=max_memory,
-                config=config,
-                **model_args,
-            )
+            if model_name == "local":
+                model = ModelClass.from_pretrained(
+                    os.path.join(self.input.get(), "/model"),
+                    torch_dtype=torch_dtype,
+                    max_memory=max_memory,
+                    config=config,
+                    **model_args,
+                )
+            else:
+                model = ModelClass.from_pretrained(
+                    model_name,
+                    revision=model_revision,
+                    torch_dtype=torch_dtype,
+                    max_memory=max_memory,
+                    config=config,
+                    **model_args,
+                )
 
         model = model.to(device_map)
         if compile:
