@@ -107,7 +107,7 @@ class SpeechToTextBulk(AudioBulk):
         device_map: str | Dict | None = "auto",
         max_memory={0: "24GB"},
         torchscript: bool = False,
-        compile: bool = True,
+        compile: bool = False,
         batch_size: int = 8,
         notification_email: Optional[str] = None,
         model_sampling_rate: int = 16_000,
