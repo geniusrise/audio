@@ -27,16 +27,6 @@ from .bulk import AudioBulk
 sequential_lock = threading.Lock()
 
 
-def sequential_tool():
-    with sequential_lock:
-        # Yield to signal that the request can proceed
-        yield
-
-
-# Register the custom tool
-cherrypy.tools.sequential = cherrypy.Tool("before_handler", sequential_tool)
-
-
 class AudioAPI(AudioBulk):
     """
     A class representing a Hugging Face API for generating text using a pre-trained language model.
@@ -113,6 +103,7 @@ class AudioAPI(AudioBulk):
         max_memory={0: "24GB"},
         torchscript: bool = False,
         compile: bool = False,
+        concurrent_queries: bool = False,
         endpoint: str = "*",
         port: int = 3000,
         cors_domain: str = "http://localhost:3000",
@@ -134,6 +125,7 @@ class AudioAPI(AudioBulk):
             max_memory (Dict[int, str], optional): The maximum memory to use for inference. Defaults to {0: "24GB"}.
             torchscript (bool, optional): Whether to use a TorchScript-optimized version of the pre-trained language model. Defaults to True.
             compile (bool): Enable Torch JIT compilation.
+            concurrent_queries: (bool): Whether the API supports concurrent API calls (usually false).
             endpoint (str, optional): The endpoint to listen on. Defaults to "*".
             port (int, optional): The port to listen on. Defaults to 3000.
             cors_domain (str, optional): The domain to allow CORS requests from. Defaults to "http://localhost:3000".
@@ -151,6 +143,7 @@ class AudioAPI(AudioBulk):
         self.max_memory = max_memory
         self.torchscript = torchscript
         self.compile = compile
+        self.concurrent_queries = concurrent_queries
         self.model_args = model_args
         self.username = username
         self.password = password
@@ -185,6 +178,14 @@ class AudioAPI(AudioBulk):
             compile=self.compile,
             **self.model_args,
         )
+
+        def sequential_locker():
+            if not self.concurrent_queries:
+                sequential_lock.acquire()
+
+        def sequential_unlocker():
+            if not self.concurrent_queries:
+                sequential_lock.release()
 
         def CORS():
             cherrypy.response.headers["Access-Control-Allow-Origin"] = cors_domain
@@ -225,6 +226,8 @@ class AudioAPI(AudioBulk):
             # Configure basic authentication
             conf = {
                 "/": {
+                    "tools.sequential_locker.on": True,
+                    "tools.sequential_unlocker.on": True,
                     "tools.auth_basic.on": True,
                     "tools.auth_basic.realm": "geniusrise",
                     "tools.auth_basic.checkpassword": self.validate_password,
@@ -233,11 +236,19 @@ class AudioAPI(AudioBulk):
             }
         else:
             # Configuration without authentication
-            conf = {"/": {"tools.CORS.on": True}}
+            conf = {
+                "/": {
+                    "tools.sequential_locker.on": True,
+                    "tools.sequential_unlocker.on": True,
+                    "tools.CORS.on": True,
+                }
+            }
 
+        cherrypy.tools.sequential_locker = cherrypy.Tool("before_handler", sequential_locker)
         cherrypy.tools.CORS = cherrypy.Tool("before_handler", CORS)
         cherrypy.tree.mount(self, "/api/v1/", conf)
         cherrypy.tools.CORS = cherrypy.Tool("before_finalize", CORS)
+        cherrypy.tools.sequential_unlocker = cherrypy.Tool("before_finalize", sequential_unlocker)
         cherrypy.engine.start()
         cherrypy.engine.block()
 
