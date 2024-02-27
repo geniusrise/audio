@@ -66,6 +66,26 @@ class SpeechToTextAPI(AudioAPI):
                 username="user" \
                 password="password"
     ```
+
+    or using whisper.cpp:
+
+    ```bash
+    genius SpeechToTextAPI rise \
+        batch \
+                --input_folder ./input \
+        batch \
+                --output_folder ./output \
+        none \
+        listen \
+            --args \
+                model_name="large" \
+                use_whisper_cpp=True \
+                endpoint="*" \
+                port=3000 \
+                cors_domain="http://localhost:3000" \
+                username="user" \
+                password="password"
+    ```
     """
 
     model: AutoModelForCTC
