@@ -15,6 +15,7 @@
 
 import base64
 import cherrypy
+import multiprocessing
 import torch
 from typing import Any, Dict
 from geniusrise import BatchInput, BatchOutput, State
@@ -59,6 +60,26 @@ class SpeechToTextAPI(AudioAPI):
                 max_memory=None \
                 torchscript=False \
                 compile=True \
+                endpoint="*" \
+                port=3000 \
+                cors_domain="http://localhost:3000" \
+                username="user" \
+                password="password"
+    ```
+
+    or using whisper.cpp:
+
+    ```bash
+    genius SpeechToTextAPI rise \
+        batch \
+                --input_folder ./input \
+        batch \
+                --output_folder ./output \
+        none \
+        listen \
+            --args \
+                model_name="large" \
+                use_whisper_cpp=True \
                 endpoint="*" \
                 port=3000 \
                 cors_domain="http://localhost:3000" \
@@ -147,7 +168,9 @@ class SpeechToTextAPI(AudioAPI):
 
         # Perform inference
         with torch.no_grad():
-            if self.model.config.model_type == "whisper":
+            if self.use_whisper_cpp:
+                transcription = self.model.transcribe(audio_input, num_proc=multiprocessing.cpu_count())
+            elif self.model.config.model_type == "whisper":
                 transcription = self.process_whisper(
                     audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
                 )

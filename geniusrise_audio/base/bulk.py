@@ -21,6 +21,7 @@ from geniusrise import BatchInput, BatchOutput, Bolt, State
 from geniusrise.logging import setup_logger
 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification, AutoProcessor, AutoConfig
 from optimum.bettertransformer import BetterTransformer
+from whispercpp import Whisper
 
 from geniusrise_audio.base.communication import send_email
 
@@ -205,6 +206,12 @@ class AudioBulk(Bolt):
 
         self.log.debug("Audio model and processor loaded successfully.")
         return model, processor
+
+    def load_models_whisper_cpp(self, model_name: str, basedir: str):
+        return Whisper.from_pretrained(
+            model_name=model_name,
+            basedir=basedir,
+        )
 
     def _get_torch_dtype(self, precision: str) -> torch.dtype:
         """

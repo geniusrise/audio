@@ -16,6 +16,7 @@
 import glob
 import json
 import os
+import multiprocessing
 import uuid
 from typing import Any, Dict, List, Optional
 import torch
@@ -73,6 +74,22 @@ class SpeechToTextBulk(AudioBulk):
                 generation_pad_token_id=1 \
                 generation_do_sample=false
     ```
+
+    or using whisper.cpp:
+
+    ```bash
+    genius SpeechToTextBulk rise \
+        batch \
+            --input_folder ./input \
+        batch \
+            --output_folder ./output \
+        none \
+        --id facebook/bart-large-cnn-lol \
+        summarize \
+            --args \
+                model_name="facebook/bart-large-cnn" \
+                use_whisper_cpp=True
+    ```
     """
 
     model: AutoModelForCTC
@@ -109,6 +126,7 @@ class SpeechToTextBulk(AudioBulk):
         torchscript: bool = False,
         compile: bool = False,
         batch_size: int = 8,
+        use_whisper_cpp: bool = False,
         notification_email: Optional[str] = None,
         model_sampling_rate: int = 16_000,
         chunk_size: int = 0,
@@ -142,6 +160,7 @@ class SpeechToTextBulk(AudioBulk):
         self.torchscript = torchscript
         self.compile = compile
         self.batch_size = batch_size
+        self.use_whisper_cpp = use_whisper_cpp
         self.notification_email = notification_email
         self.model_sampling_rate = model_sampling_rate
         self.chunk_size = chunk_size
@@ -173,22 +192,28 @@ class SpeechToTextBulk(AudioBulk):
         dataset_path = self.input.input_folder
         output_path = self.output.output_folder
 
-        self.model, self.processor = self.load_models(
-            model_name=self.model_name,
-            processor_name=self.processor_name,
-            model_revision=self.model_revision,
-            processor_revision=self.processor_revision,
-            model_class=self.model_class,
-            processor_class=self.processor_class,
-            use_cuda=self.use_cuda,
-            precision=self.precision,
-            quantization=self.quantization,
-            device_map=self.device_map,
-            max_memory=self.max_memory,
-            torchscript=self.torchscript,
-            compile=self.compile,
-            **self.model_args,
-        )
+        if self.use_whisper_cpp:
+            self.model = self.load_models_whisper_cpp(
+                model_name=self.model_name,
+                basedir=self.output.output_folder,
+            )
+        else:
+            self.model, self.processor = self.load_models(
+                model_name=self.model_name,
+                processor_name=self.processor_name,
+                model_revision=self.model_revision,
+                processor_revision=self.processor_revision,
+                model_class=self.model_class,
+                processor_class=self.processor_class,
+                use_cuda=self.use_cuda,
+                precision=self.precision,
+                quantization=self.quantization,
+                device_map=self.device_map,
+                max_memory=self.max_memory,
+                torchscript=self.torchscript,
+                compile=self.compile,
+                **self.model_args,
+            )
 
         # Load dataset
         audio_files = []
@@ -212,7 +237,9 @@ class SpeechToTextBulk(AudioBulk):
                     model_sampling_rate=model_sampling_rate,
                 )
 
-                if self.model.config.model_type == "whisper":
+                if self.use_whisper_cpp:
+                    transcription = self.model.transcribe(audio_input, num_proc=multiprocessing.cpu_count())
+                elif self.model.config.model_type == "whisper":
                     transcriptions = self.process_whisper(
                         audio_input,
                         model_sampling_rate,
