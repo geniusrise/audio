@@ -13,12 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO: make these APIs batched
+
 import glob
 import json
 import os
 import multiprocessing
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+import numpy as np
 import torch
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor
@@ -127,6 +130,7 @@ class SpeechToTextBulk(AudioBulk):
         compile: bool = False,
         batch_size: int = 8,
         use_whisper_cpp: bool = False,
+        use_faster_whisper: bool = False,
         notification_email: Optional[str] = None,
         model_sampling_rate: int = 16_000,
         chunk_size: int = 0,
@@ -148,6 +152,11 @@ class SpeechToTextBulk(AudioBulk):
             torchscript (bool, optional): Whether to use a TorchScript-optimized version of the pre-trained language model. Defaults to False.
             compile (bool, optional): Whether to compile the model before fine-tuning. Defaults to True.
             batch_size (int): Number of classifications to process simultaneously (default 8).
+            use_whisper_cpp (bool): Whether to use whisper.cpp to load the model. Defaults to False. Note: only works for these models: https://github.com/aarnphm/whispercpp/blob/524dd6f34e9d18137085fb92a42f1c31c9c6bc29/src/whispercpp/utils.py#L32
+            use_faster_whisper (bool): Whether to use faster-whisper.
+            model_sampling_rate (int): Rate of sampling supported by the model, usually 16000 Hz.
+            chunk_size (int): size of chunks to divide the audio file into to decode, 16000 = 1 second, 30s is a decent value, does not apply for longform models like whisper.
+            overlap_size (int): how much of the chunks to overlap, usually around 50% of chunk size.
             **kwargs: Arbitrary keyword arguments for model and generation configurations.
         """
         self.model_class = model_class
@@ -161,6 +170,7 @@ class SpeechToTextBulk(AudioBulk):
         self.compile = compile
         self.batch_size = batch_size
         self.use_whisper_cpp = use_whisper_cpp
+        self.use_faster_whisper = use_faster_whisper
         self.notification_email = notification_email
         self.model_sampling_rate = model_sampling_rate
         self.chunk_size = chunk_size
@@ -212,6 +222,8 @@ class SpeechToTextBulk(AudioBulk):
                 max_memory=self.max_memory,
                 torchscript=self.torchscript,
                 compile=self.compile,
+                use_whisper_cpp=use_whisper_cpp,
+                use_faster_whisper=use_faster_whisper,
                 **self.model_args,
             )
 
@@ -239,6 +251,10 @@ class SpeechToTextBulk(AudioBulk):
 
                 if self.use_whisper_cpp:
                     transcription = self.model.transcribe(audio_input, num_proc=multiprocessing.cpu_count())
+                elif self.use_faster_whisper:
+                    transcription = self.process_faster_whisper(
+                        audio_input, model_sampling_rate, chunk_size, generation_args
+                    )
                 elif self.model.config.model_type == "whisper":
                     transcriptions = self.process_whisper(
                         audio_input,
@@ -271,6 +287,62 @@ class SpeechToTextBulk(AudioBulk):
 
             self._save_transcriptions(transcriptions=results, filenames=batch, chunk_idx=i, output_path=output_path)
         self.done()
+
+    def process_faster_whisper(
+        self,
+        audio_input: Union[str, bytes, np.ndarray, torch.Tensor],
+        model_sampling_rate: int,
+        chunk_size: int,
+        generate_args: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Processes audio input with the faster-whisper model.
+
+        Args:
+            audio_input (Union[str, bytes, np.ndarray]): The audio input for transcription.
+            model_sampling_rate (int): The sampling rate of the model.
+            chunk_size (int): The size of audio chunks to process.
+            generate_args (Dict[str, Any]): Additional arguments for transcription.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the transcription results.
+        """
+        transcribed_segments, transcription_info = self.model.transcribe(
+            beam_size=generate_args.get("beam_size", 5),
+            best_of=generate_args.get("best_of", 5),
+            patience=generate_args.get("patience", 1.0),
+            length_penalty=generate_args.get("length_penalty", 1.0),
+            repetition_penalty=generate_args.get("repetition_penalty", 1.0),
+            no_repeat_ngram_size=generate_args.get("no_repeat_ngram_size", 0),
+            temperature=generate_args.get("temperature", [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]),
+            compression_ratio_threshold=generate_args.get("compression_ratio_threshold", 2.4),
+            log_prob_threshold=generate_args.get("log_prob_threshold", -1.0),
+            no_speech_threshold=generate_args.get("no_speech_threshold", 0.6),
+            condition_on_previous_text=generate_args.get("condition_on_previous_text", True),
+            prompt_reset_on_temperature=generate_args.get("prompt_reset_on_temperature", 0.5),
+            initial_prompt=generate_args.get("initial_prompt", None),
+            prefix=generate_args.get("prefix", None),
+            suppress_blank=generate_args.get("suppress_blank", True),
+            suppress_tokens=generate_args.get("suppress_tokens", [-1]),
+            without_timestamps=generate_args.get("without_timestamps", False),
+            max_initial_timestamp=generate_args.get("max_initial_timestamp", 1.0),
+            word_timestamps=generate_args.get("word_timestamps", False),
+            prepend_punctuations=generate_args.get("prepend_punctuations", "\"'“¿([{-"),
+            append_punctuations=generate_args.get(
+                "append_punctuations",
+                "\"'.。,，!！?？:：”)]}、",
+            ),
+            vad_filter=generate_args.get("vad_filter", False),
+            vad_parameters=generate_args.get("vad_parameters", None),
+            max_new_tokens=generate_args.get("max_new_tokens", None),
+            chunk_length=chunk_size / model_sampling_rate,
+            clip_timestamps=generate_args.get("clip_timestamps", "0"),
+            hallucination_silence_threshold=generate_args.get("hallucination_silence_threshold", None),
+        )
+
+        # Format the results
+        transcriptions = [segment.text for segment in transcribed_segments]
+        return {"transcriptions": transcriptions, "transcription_info": transcription_info._asdict()}
 
     def process_whisper(
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args

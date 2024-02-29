@@ -105,6 +105,7 @@ class AudioAPI(AudioBulk):
         compile: bool = False,
         concurrent_queries: bool = False,
         use_whisper_cpp: bool = False,
+        use_faster_whisper: bool = False,
         endpoint: str = "*",
         port: int = 3000,
         cors_domain: str = "http://localhost:3000",
@@ -128,6 +129,7 @@ class AudioAPI(AudioBulk):
             compile (bool): Enable Torch JIT compilation.
             concurrent_queries: (bool): Whether the API supports concurrent API calls (usually false).
             use_whisper_cpp (bool): Whether to use whisper.cpp to load the model. Defaults to False. Note: only works for these models: https://github.com/aarnphm/whispercpp/blob/524dd6f34e9d18137085fb92a42f1c31c9c6bc29/src/whispercpp/utils.py#L32
+            use_faster_whisper (bool): Whether to use faster-whisper.
             endpoint (str, optional): The endpoint to listen on. Defaults to "*".
             port (int, optional): The port to listen on. Defaults to 3000.
             cors_domain (str, optional): The domain to allow CORS requests from. Defaults to "http://localhost:3000".
@@ -147,6 +149,7 @@ class AudioAPI(AudioBulk):
         self.compile = compile
         self.concurrent_queries = concurrent_queries
         self.use_whisper_cpp = use_whisper_cpp
+        self.use_faster_whisper = use_faster_whisper
         self.model_args = model_args
         self.username = username
         self.password = password
@@ -165,28 +168,24 @@ class AudioAPI(AudioBulk):
         self.processor_name = processor_name
         self.processor_revision = processor_revision
 
-        if self.use_whisper_cpp:
-            self.model = self.load_models_whisper_cpp(
-                model_name=self.model_name,
-                basedir=self.output.output_folder,
-            )
-        else:
-            self.model, self.processor = self.load_models(
-                model_name=self.model_name,
-                processor_name=self.processor_name,
-                model_revision=self.model_revision,
-                processor_revision=self.processor_revision,
-                model_class=self.model_class,
-                processor_class=self.processor_class,
-                use_cuda=self.use_cuda,
-                precision=self.precision,
-                quantization=self.quantization,
-                device_map=self.device_map,
-                max_memory=self.max_memory,
-                torchscript=self.torchscript,
-                compile=self.compile,
-                **self.model_args,
-            )
+        self.model, self.processor = self.load_models(
+            model_name=self.model_name,
+            processor_name=self.processor_name,
+            model_revision=self.model_revision,
+            processor_revision=self.processor_revision,
+            model_class=self.model_class,
+            processor_class=self.processor_class,
+            use_cuda=self.use_cuda,
+            precision=self.precision,
+            quantization=self.quantization,
+            device_map=self.device_map,
+            max_memory=self.max_memory,
+            torchscript=self.torchscript,
+            compile=self.compile,
+            use_whisper_cpp=use_whisper_cpp,
+            use_faster_whisper=use_faster_whisper,
+            **self.model_args,
+        )
 
         def sequential_locker():
             if self.concurrent_queries:
