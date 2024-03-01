@@ -17,6 +17,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 import os
 import torch
 import transformers
+import multiprocessing
+from faster_whisper import WhisperModel
 from geniusrise import BatchInput, BatchOutput, Bolt, State
 from geniusrise.logging import setup_logger
 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification, AutoProcessor, AutoConfig
@@ -90,6 +92,8 @@ class AudioBulk(Bolt):
         compile: bool = False,
         flash_attention: bool = False,
         better_transformers: bool = False,
+        use_whisper_cpp: bool = False,
+        use_faster_whisper: bool = False,
         **model_args: Any,
     ) -> Tuple[AutoModelForAudioClassification, AutoFeatureExtractor]:
         """
@@ -111,12 +115,35 @@ class AudioBulk(Bolt):
             compile (bool): Enable Torch JIT compilation.
             flash_attention (bool): Flag to enable Flash Attention optimization for faster processing.
             better_transformers (bool): Flag to enable Better Transformers optimization for faster processing.
+            use_whisper_cpp (bool): Whether to use whisper.cpp to load the model. Defaults to False. Note: only works for these models: https://github.com/aarnphm/whispercpp/blob/524dd6f34e9d18137085fb92a42f1c31c9c6bc29/src/whispercpp/utils.py#L32
+            use_faster_whisper (bool): Whether to use faster-whisper.
             **model_args (Any): Additional arguments for model loading.
 
         Returns:
             Tuple[AutoModelForAudioClassification, AutoFeatureExtractor]: Loaded model and processor.
         """
         self.log.info(f"Loading audio model: {model_name}")
+
+        if use_whisper_cpp:
+            return (
+                self.load_models_whisper_cpp(
+                    model_name=self.model_name,
+                    basedir=self.output.output_folder,
+                ),
+                None,
+            )
+        elif use_faster_whisper:
+            return (
+                self.load_models_faster_whisper(
+                    model_name=model_name,
+                    device_map=device_map if type(device_map) is str else "auto",
+                    precision=precision,
+                    cpu_threads=multiprocessing.cpu_count(),
+                    num_workers=1,
+                    dowload_root=None,
+                ),
+                None,
+            )
 
         # Determine torch dtype based on precision
         torch_dtype = self._get_torch_dtype(precision)
@@ -211,6 +238,27 @@ class AudioBulk(Bolt):
         return Whisper.from_pretrained(
             model_name=model_name,
             basedir=basedir,
+        )
+
+    def load_models_faster_whisper(
+        self,
+        model_name,
+        device_map: str = "auto",
+        precision="float16",
+        quantization=0,
+        cpu_threads=4,
+        num_workers=1,
+        dowload_root=None,
+    ):
+        return WhisperModel(
+            model_size_or_path=model_name,
+            device=device_map.split(":")[0] if ":" in device_map else device_map,
+            device_index=int(device_map.replace("cuda:", "").replace("mps:", "")) if "cuda:" in device_map else 0,
+            compute_type=precision if quantization == 0 else f"int{quantization}_{precision}",
+            cpu_threads=cpu_threads,
+            num_workers=num_workers,
+            download_root=dowload_root,
+            local_files_only=False,
         )
 
     def _get_torch_dtype(self, precision: str) -> torch.dtype:
