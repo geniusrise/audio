@@ -16,9 +16,9 @@
 import base64
 import cherrypy
 import multiprocessing
-import numpy as np
+from io import BytesIO
 import torch
-from typing import Any, Dict, Union
+from typing import Any, Dict
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor, pipeline
 
@@ -163,7 +163,7 @@ class SpeechToTextAPI(AudioAPI):
         audio_bytes = base64.b64decode(audio_data)
         audio_input, input_sampling_rate = decode_audio(
             audio_bytes=audio_bytes,
-            model_type=self.model.config.model_type,
+            model_type=self.model.config.model_type if not (self.use_faster_whisper or self.use_whisper_cpp) else None,
             model_sampling_rate=model_sampling_rate,
         )
 
@@ -172,7 +172,7 @@ class SpeechToTextAPI(AudioAPI):
             if self.use_whisper_cpp:
                 transcription = self.model.transcribe(audio_input, num_proc=multiprocessing.cpu_count())
             elif self.use_faster_whisper:
-                transcription = self.process_faster_whisper(audio_input, model_sampling_rate, chunk_size, generate_args)
+                transcription = self.process_faster_whisper(audio_bytes, model_sampling_rate, chunk_size, generate_args)
             elif self.model.config.model_type == "whisper":
                 transcription = self.process_whisper(
                     audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
@@ -190,7 +190,7 @@ class SpeechToTextAPI(AudioAPI):
 
     def process_faster_whisper(
         self,
-        audio_input: Union[str, bytes, np.ndarray],
+        audio_input: bytes,
         model_sampling_rate: int,
         chunk_size: int,
         generate_args: Dict[str, Any],
@@ -199,7 +199,7 @@ class SpeechToTextAPI(AudioAPI):
         Processes audio input with the faster-whisper model.
 
         Args:
-            audio_input (Union[str, bytes, np.ndarray]): The audio input for transcription.
+            audio_input (bytes): The audio input for transcription.
             model_sampling_rate (int): The sampling rate of the model.
             chunk_size (int): The size of audio chunks to process.
             generate_args (Dict[str, Any]): Additional arguments for transcription.
@@ -208,6 +208,7 @@ class SpeechToTextAPI(AudioAPI):
             Dict[str, Any]: A dictionary containing the transcription results.
         """
         transcribed_segments, transcription_info = self.model.transcribe(
+            audio=BytesIO(audio_input),
             beam_size=generate_args.get("beam_size", 5),
             best_of=generate_args.get("best_of", 5),
             patience=generate_args.get("patience", 1.0),
@@ -235,7 +236,7 @@ class SpeechToTextAPI(AudioAPI):
             vad_filter=generate_args.get("vad_filter", False),
             vad_parameters=generate_args.get("vad_parameters", None),
             max_new_tokens=generate_args.get("max_new_tokens", None),
-            chunk_length=generate_args.get("chunk_length", None),
+            chunk_length=chunk_size / model_sampling_rate if chunk_size else None,
             clip_timestamps=generate_args.get("clip_timestamps", "0"),
             hallucination_silence_threshold=generate_args.get("hallucination_silence_threshold", None),
         )

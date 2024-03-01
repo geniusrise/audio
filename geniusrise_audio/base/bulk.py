@@ -250,10 +250,10 @@ class AudioBulk(Bolt):
         num_workers=1,
         dowload_root=None,
     ):
-        WhisperModel(
+        return WhisperModel(
             model_size_or_path=model_name,
-            device=device_map,
-            device_index=int(device_map.replace("cuda", "").replace("mps", "")) if "cuda" in device_map else 0,
+            device=device_map.split(":")[0] if ":" in device_map else device_map,
+            device_index=int(device_map.replace("cuda:", "").replace("mps:", "")) if "cuda:" in device_map else 0,
             compute_type=precision if quantization == 0 else f"int{quantization}_{precision}",
             cpu_threads=cpu_threads,
             num_workers=num_workers,

@@ -18,10 +18,10 @@
 import glob
 import json
 import os
+from io import BytesIO
 import multiprocessing
 import uuid
-from typing import Any, Dict, List, Optional, Union
-import numpy as np
+from typing import Any, Dict, List, Optional
 import torch
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor
@@ -52,7 +52,7 @@ class SpeechToTextBulk(AudioBulk):
             --output_folder ./output \
         none \
         --id facebook/bart-large-cnn-lol \
-        summarize \
+        transcribe \
             --args \
                 model_name="facebook/bart-large-cnn" \
                 model_class="AutoModelForSeq2SeqLM" \
@@ -88,7 +88,7 @@ class SpeechToTextBulk(AudioBulk):
             --output_folder ./output \
         none \
         --id facebook/bart-large-cnn-lol \
-        summarize \
+        transcribe \
             --args \
                 model_name="facebook/bart-large-cnn" \
                 use_whisper_cpp=True
@@ -243,17 +243,18 @@ class SpeechToTextBulk(AudioBulk):
             results = []
             for audio_file in batch:
                 # Load and preprocess audio
-                audio_input, sampling_rate = decode_audio(
-                    audio_bytes=open(audio_file, "rb").read(),
-                    model_type=self.model.config.model_type,
-                    model_sampling_rate=model_sampling_rate,
-                )
+                if not self.use_faster_whisper:
+                    audio_input, sampling_rate = decode_audio(
+                        audio_bytes=open(audio_file, "rb").read(),
+                        model_type=self.model.config.model_type,
+                        model_sampling_rate=model_sampling_rate,
+                    )
 
                 if self.use_whisper_cpp:
                     transcription = self.model.transcribe(audio_input, num_proc=multiprocessing.cpu_count())
                 elif self.use_faster_whisper:
                     transcription = self.process_faster_whisper(
-                        audio_input, model_sampling_rate, chunk_size, generation_args
+                        open(audio_file, "rb").read(), model_sampling_rate, chunk_size, generation_args
                     )
                 elif self.model.config.model_type == "whisper":
                     transcriptions = self.process_whisper(
@@ -290,7 +291,7 @@ class SpeechToTextBulk(AudioBulk):
 
     def process_faster_whisper(
         self,
-        audio_input: Union[str, bytes, np.ndarray, torch.Tensor],
+        audio_input: bytes,
         model_sampling_rate: int,
         chunk_size: int,
         generate_args: Dict[str, Any],
@@ -299,7 +300,7 @@ class SpeechToTextBulk(AudioBulk):
         Processes audio input with the faster-whisper model.
 
         Args:
-            audio_input (Union[str, bytes, np.ndarray]): The audio input for transcription.
+            audio_input (bytes): The audio input for transcription.
             model_sampling_rate (int): The sampling rate of the model.
             chunk_size (int): The size of audio chunks to process.
             generate_args (Dict[str, Any]): Additional arguments for transcription.
@@ -308,6 +309,7 @@ class SpeechToTextBulk(AudioBulk):
             Dict[str, Any]: A dictionary containing the transcription results.
         """
         transcribed_segments, transcription_info = self.model.transcribe(
+            audio=BytesIO(audio_input),
             beam_size=generate_args.get("beam_size", 5),
             best_of=generate_args.get("best_of", 5),
             patience=generate_args.get("patience", 1.0),
@@ -335,7 +337,7 @@ class SpeechToTextBulk(AudioBulk):
             vad_filter=generate_args.get("vad_filter", False),
             vad_parameters=generate_args.get("vad_parameters", None),
             max_new_tokens=generate_args.get("max_new_tokens", None),
-            chunk_length=chunk_size / model_sampling_rate,
+            chunk_length=chunk_size / model_sampling_rate if chunk_size else None,
             clip_timestamps=generate_args.get("clip_timestamps", "0"),
             hallucination_silence_threshold=generate_args.get("hallucination_silence_threshold", None),
         )
