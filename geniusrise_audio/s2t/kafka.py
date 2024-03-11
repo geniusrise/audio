@@ -17,6 +17,8 @@ from geniusrise_audio.s2t.inference import SpeechToTextInference
 from geniusrise import StreamingInput, StreamingOutput, State
 from typing import Dict
 import os
+import base64
+from geniusrise_audio.s2t.util import decode_audio
 
 
 class SpeechToTextKafka(SpeechToTextInference):
@@ -98,7 +100,24 @@ class SpeechToTextKafka(SpeechToTextInference):
         )
 
     def transcribe_stream(self):
-        pass
+        self.model, self.processor = self.prepare()
+
+        for data in self.input.get():
+            try:
+                audio_data = data["audio"]  # Assuming row format aligns with df.select(audio_col).rdd
+                metadata = data
+                del metadata["audio"]
+                audio_bytes = base64.b64decode(audio_data)
+                audio_input, _ = decode_audio(audio_bytes=audio_bytes)
+
+                # Process the audio input to get transcription
+                transcription_result = self.process_audio(audio_input, model_sampling_rate=self.model_sampling_rate)
+                transcription_result["metadata"] = metadata
+            except Exception as e:
+                print(e)
+                transcription_result = {"transcription": "", "segments": [], "metadata": data}
+
+            self.output.save(transcription_result)
 
     def process_audio(self, audio_input: bytes, model_sampling_rate: int) -> str:
         """
