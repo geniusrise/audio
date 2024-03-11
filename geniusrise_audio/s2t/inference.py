@@ -19,32 +19,14 @@ from typing import Any, Dict
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor
 
-from geniusrise_audio.base import AudioBulk
+from geniusrise_audio.base import AudioBulk, AudioStream
 from geniusrise_audio.s2t.util import whisper_alignment_heads, chunk_audio
 
 
-class SpeechToTextInference(AudioBulk):
+class _SpeechToTextInference:
 
     model: AutoModelForCTC
     processor: AutoProcessor
-
-    def __init__(
-        self,
-        input: BatchInput,
-        output: BatchOutput,
-        state: State,
-        **kwargs,
-    ):
-        """
-        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
-
-        Args:
-            input (BatchInput): The input data configuration.
-            output (BatchOutput): The output data configuration.
-            state (State): The state configuration.
-            **kwargs: Additional keyword arguments.
-        """
-        super().__init__(input=input, output=output, state=state, **kwargs)
 
     def process_faster_whisper(
         self,
@@ -244,3 +226,46 @@ class SpeechToTextInference(AudioBulk):
 
         transcription = " ".join([s["tokens"].strip() for s in segments])
         return {"transcription": transcription, "segments": segments}
+
+
+class SpeechToTextInference(AudioBulk, _SpeechToTextInference):
+    def __init__(
+        self,
+        input: BatchInput,
+        output: BatchOutput,
+        state: State,
+        **kwargs,
+    ):
+        """
+        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
+
+        Args:
+            input (BatchInput): The input data configuration.
+            output (BatchOutput): The output data configuration.
+            state (State): The state configuration.
+            **kwargs: Additional keyword arguments.
+        """
+        super().__init__(input=input, output=output, state=state, **kwargs)
+
+
+class SpeechToTextInferenceStream(AudioStream, _SpeechToTextInference):
+    model: AutoModelForCTC
+    processor: AutoProcessor
+
+    def __init__(
+        self,
+        input: BatchInput,
+        output: BatchOutput,
+        state: State,
+        **kwargs,
+    ):
+        """
+        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
+
+        Args:
+            input (BatchInput): The input data configuration.
+            output (BatchOutput): The output data configuration.
+            state (State): The state configuration.
+            **kwargs: Additional keyword arguments.
+        """
+        super().__init__(input=input, output=output, state=state, **kwargs)

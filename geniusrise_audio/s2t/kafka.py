@@ -13,17 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pyspark.sql import DataFrame, SparkSession
 from geniusrise_audio.s2t.inference import SpeechToTextInference
-from geniusrise import BatchInput, BatchOutput, State
+from geniusrise import StreamingInput, StreamingOutput, State
 from typing import Dict
 import os
-import base64
-from pyspark.ml.torch.distributor import TorchDistributor
-from pyspark.sql.functions import monotonically_increasing_id
 
 
-class SpeechToTextSpark(SpeechToTextInference):
+class SpeechToTextKafka(SpeechToTextInference):
     """
     SpeechToTextSpark leverages Apache Spark and PyTorch's distributed computing capabilities
     to perform speech-to-text inference on a large scale. It inherits from SpeechToTextInference
@@ -32,10 +28,9 @@ class SpeechToTextSpark(SpeechToTextInference):
 
     def __init__(
         self,
-        input: BatchInput,
-        output: BatchOutput,
+        input: StreamingInput,
+        output: StreamingOutput,
         state: State,
-        spark_session: SparkSession,
         model_name: str,
         model_class: str = "AutoModel",
         processor_class: str = "AutoProcessor",
@@ -64,7 +59,6 @@ class SpeechToTextSpark(SpeechToTextInference):
             **kwargs: Additional keyword arguments.
         """
         super().__init__(input=input, output=output, state=state)
-        self.spark = spark_session
         self.model_name = model_name
         self.model_class = model_class
         self.processor_class = processor_class
@@ -103,59 +97,8 @@ class SpeechToTextSpark(SpeechToTextInference):
             **self.model_args,
         )
 
-    def transcribe_dataframe(
-        self,
-        df: DataFrame,
-        audio_col: str,
-    ) -> DataFrame:
-        """
-        Transcribe audio data in a Spark DataFrame to text using distributed processing.
-        """
-        # Add a unique ID to each row to use for joining later
-        df_with_id = df.withColumn("row_id", monotonically_increasing_id())
-
-        # Prepare and run the distributed inference
-        distributor = TorchDistributor(local_mode=False, use_gpu=self.use_cuda, num_processes=self.num_gpus)
-
-        def distributed_transcribe(iterator):
-            from geniusrise_audio.s2t.util import decode_audio
-            import torch.distributed
-            import torch
-
-            torch.distributed.init_process_group(backend="nccl")
-
-            # Load model and processor inside the distributed function
-            self.model, self.processor = self.prepare()
-            transcription_results = []
-
-            for row in iterator:
-                try:
-                    audio_data = row[0]  # Assuming row format aligns with df.select(audio_col).rdd
-                    audio_bytes = base64.b64decode(audio_data)
-                    audio_input, _ = decode_audio(audio_bytes=audio_bytes)
-
-                    # Process the audio input to get transcription
-                    transcription_result = self.process_audio(audio_input, model_sampling_rate=self.model_sampling_rate)
-                except Exception as e:
-                    print(e)
-                    transcription_result = {"transcription": "", "segments": []}
-
-                transcription_results.append(transcription_result)
-
-            torch.destroy_process_group()
-            # convert list of dict to rdd
-            return transcription_results
-
-        # Select only the IDs and audio data, and apply the mapPartitions operation
-        transcribed_rdd = distributor.run(distributed_transcribe, df_with_id.select("row_id", audio_col).rdd)
-
-        # Convert RDD back to DataFrame and rename columns appropriately
-        transcribed_df = transcribed_rdd.toDF(["row_id", "transcription"])
-
-        # Join the transcribed DataFrame with the original DataFrame using the row_id
-        result_df = df_with_id.join(transcribed_df, on="row_id").drop("row_id")
-
-        return result_df
+    def transcribe_stream(self):
+        pass
 
     def process_audio(self, audio_input: bytes, model_sampling_rate: int) -> str:
         """
