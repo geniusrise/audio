@@ -13,12 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
+from typing import Dict, List
+
 import numpy as np
-from typing import List, Dict
-from geniusrise import BatchInput, BatchOutput, State, StreamingInput, StreamingOutput
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, SpeechT5HifiGan, AutoProcessor
+import torch
 from datasets import load_dataset
+from geniusrise import BatchInput, BatchOutput, State, StreamingInput, StreamingOutput
+from transformers import AutoModelForSeq2SeqLM, AutoProcessor, AutoTokenizer, SpeechT5HifiGan
 
 from geniusrise_audio.base import AudioBulk, AudioStream
 

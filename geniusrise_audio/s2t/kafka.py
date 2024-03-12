@@ -13,11 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from geniusrise_audio.s2t.inference import SpeechToTextInference
-from geniusrise import StreamingInput, StreamingOutput, State
-from typing import Dict
-import os
 import base64
+import os
+from typing import Dict
+
+from geniusrise import State, StreamingInput, StreamingOutput
+
+from geniusrise_audio.s2t.inference import SpeechToTextInference
 from geniusrise_audio.s2t.util import decode_audio
 
 

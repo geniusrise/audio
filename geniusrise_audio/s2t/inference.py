@@ -14,13 +14,14 @@
 # limitations under the License.
 
 from io import BytesIO
-import torch
 from typing import Any, Dict
+
+import torch
 from geniusrise import BatchInput, BatchOutput, State, StreamingInput, StreamingOutput
 from transformers import AutoModelForCTC, AutoProcessor
 
 from geniusrise_audio.base import AudioBulk, AudioStream
-from geniusrise_audio.s2t.util import whisper_alignment_heads, chunk_audio
+from geniusrise_audio.s2t.util import chunk_audio, whisper_alignment_heads
 
 
 class _SpeechToTextInference:

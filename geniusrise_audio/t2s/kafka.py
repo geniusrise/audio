@@ -13,11 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from geniusrise_audio.t2s.inference import TextToSpeechInference
-from geniusrise import StreamingInput, StreamingOutput, State
-from typing import Dict
 import base64
+from typing import Dict
+
 import numpy as np
+from geniusrise import State, StreamingInput, StreamingOutput
+
+from geniusrise_audio.t2s.inference import TextToSpeechInference
 
 
 class TextToSpeechKafka(TextToSpeechInference):

@@ -14,8 +14,9 @@
 # limitations under the License.
 
 import base64
-import cherrypy
 import multiprocessing
+
+import cherrypy
 import torch
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor

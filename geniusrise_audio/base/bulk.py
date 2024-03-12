@@ -13,24 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union, List
+import multiprocessing
 import os
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import torch
 import transformers
-import multiprocessing
 from faster_whisper import WhisperModel
 from geniusrise import BatchInput, BatchOutput, Bolt, State
 from geniusrise.logging import setup_logger
+from optimum.bettertransformer import BetterTransformer
 from transformers import (
+    AutoConfig,
     AutoFeatureExtractor,
     AutoModelForAudioClassification,
     AutoProcessor,
-    AutoConfig,
     BeamSearchScorer,
     LogitsProcessorList,
     MinLengthLogitsProcessor,
 )
-from optimum.bettertransformer import BetterTransformer
 from whispercpp import Whisper
 
 from geniusrise_audio.base.communication import send_email

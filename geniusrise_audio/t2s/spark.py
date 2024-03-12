@@ -13,14 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pyspark.sql import DataFrame, SparkSession
-from geniusrise_audio.t2s.inference import TextToSpeechInference
-from geniusrise import BatchInput, BatchOutput, State
-from typing import Dict
-import numpy as np
 import base64
+from typing import Dict
+
+import numpy as np
+from geniusrise import BatchInput, BatchOutput, State
 from pyspark.ml.torch.distributor import TorchDistributor
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import monotonically_increasing_id
+
+from geniusrise_audio.t2s.inference import TextToSpeechInference
 
 
 class TextToSpeechSpark(TextToSpeechInference):
@@ -94,8 +96,8 @@ class TextToSpeechSpark(TextToSpeechInference):
         distributor = TorchDistributor(local_mode=False, use_gpu=self.use_cuda, num_processes=self.num_gpus)
 
         def distributed_synthesize(iterator):
-            import torch.distributed
             import torch
+            import torch.distributed
 
             torch.distributed.init_process_group(backend="nccl")
 

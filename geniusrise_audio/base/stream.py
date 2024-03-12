@@ -13,19 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import multiprocessing
 from typing import Any, Dict, Optional, Tuple, Union
+
 import torch
 import transformers
-import multiprocessing
 from faster_whisper import WhisperModel
 from geniusrise import Bolt, State, StreamingInput, StreamingOutput
 from geniusrise.logging import setup_logger
-from transformers import (
-    AutoFeatureExtractor,
-    AutoModelForAudioClassification,
-    AutoConfig,
-)
 from optimum.bettertransformer import BetterTransformer
+from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification
 from whispercpp import Whisper
 
 from geniusrise_audio.base.communication import send_email

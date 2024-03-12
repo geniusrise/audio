@@ -15,14 +15,16 @@
 
 import glob
 import json
-import os
 import multiprocessing
+import os
 import uuid
 from typing import Any, Dict, List, Optional
+
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor
-from geniusrise_audio.s2t.util import decode_audio
+
 from geniusrise_audio.s2t.inference import SpeechToTextInference
+from geniusrise_audio.s2t.util import decode_audio
 
 
 class SpeechToTextBulk(SpeechToTextInference):

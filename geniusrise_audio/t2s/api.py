@@ -14,13 +14,14 @@
 # limitations under the License.
 
 import base64
-import cherrypy
 from typing import Any, Dict
+
+import cherrypy
 from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
 
-from geniusrise_audio.t2s.util import convert_waveform_to_audio_file
 from geniusrise_audio.t2s.inference import TextToSpeechInference
+from geniusrise_audio.t2s.util import convert_waveform_to_audio_file
 
 
 class TextToSpeechAPI(TextToSpeechInference):

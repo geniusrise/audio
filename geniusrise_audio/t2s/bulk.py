@@ -27,8 +27,9 @@ from geniusrise import BatchInput, BatchOutput, State
 from pyarrow import feather
 from pyarrow import parquet as pq
 from transformers import AutoModelForCTC, AutoProcessor
-from geniusrise_audio.t2s.util import convert_waveform_to_audio_file
+
 from geniusrise_audio.t2s.inference import TextToSpeechInference
+from geniusrise_audio.t2s.util import convert_waveform_to_audio_file
 
 
 class TextToSpeechBulk(TextToSpeechInference):
