@@ -18,6 +18,7 @@ from geniusrise_audio.t2s.inference import TextToSpeechInference
 from geniusrise import BatchInput, BatchOutput, State
 from typing import Dict
 import numpy as np
+import base64
 from pyspark.ml.torch.distributor import TorchDistributor
 from pyspark.sql.functions import monotonically_increasing_id
 
@@ -109,11 +110,11 @@ class TextToSpeechSpark(TextToSpeechInference):
 
                     # Process the text input to get speech synthesis
                     synthesis_result = self.process_text(text_data, voice_preset)
-                    synthesis_result = synthesis_result.tolist()
                 except Exception as e:
                     self.log.exception(e)
-                    synthesis_result = np.zeros(1).tolist()
+                    synthesis_result = np.zeros(1)
 
+                synthesis_result = base64.b64encode(synthesis_result.tobytes()).decode("utf-8")
                 synthesis_results.append(synthesis_result)
 
             torch.destroy_process_group()
