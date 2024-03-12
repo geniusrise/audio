@@ -15,78 +15,23 @@
 
 import torch
 import numpy as np
-from typing import List
-from geniusrise import BatchInput, BatchOutput, State
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, SpeechT5HifiGan
+from typing import List, Dict
+from geniusrise import BatchInput, BatchOutput, State, StreamingInput, StreamingOutput
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, SpeechT5HifiGan, AutoProcessor
 from datasets import load_dataset
 
-from geniusrise_audio.base import AudioAPI
+from geniusrise_audio.base import AudioBulk, AudioStream
 
 
-class TextToSpeechInference(AudioAPI):
-    r"""
-    TextToSpeechAPI for converting text to speech using various TTS models.
-
-    Attributes:
-        model (AutoModelForSeq2SeqLM): The text-to-speech model.
-        tokenizer (AutoTokenizer): The tokenizer for the model.
-
-    Methods:
-        synthesize(text_input: str) -> bytes:
-            Converts the given text input to speech using the text-to-speech model.
-
-    Example CLI Usage:
-
-    ```
-    genius TextToSpeechAPI rise \
-    batch \
-        --input_folder ./input \
-    batch \
-        --output_folder ./output \
-    none \
-        --id facebook/mms-tts-eng \
-        listen \
-            --args \
-                model_name="facebook/mms-tts-eng" \
-                model_class="VitsModel" \
-                processor_class="VitsTokenizer" \
-                use_cuda=True \
-                precision="float32" \
-                quantization=0 \
-                device_map="cuda:0" \
-                max_memory=None \
-                torchscript=False \
-                compile=False \
-                endpoint="*" \
-                port=3000 \
-                cors_domain="http://localhost:3000" \
-                username="user" \
-                password="password"
-    ```
-    """
+class _TextToSpeechInference:
 
     model: AutoModelForSeq2SeqLM
     tokenizer: AutoTokenizer
+    processor: AutoProcessor
     vocoder = None
     embeddings_dataset = None
-
-    def __init__(
-        self,
-        input: BatchInput,
-        output: BatchOutput,
-        state: State,
-        **kwargs,
-    ):
-        """
-        Initializes the TextToSpeechAPI with configurations for text-to-speech processing.
-
-        Args:
-            input (BatchInput): The input data configuration.
-            output (BatchOutput): The output data configuration.
-            state (State): The state configuration.
-            **kwargs: Additional keyword arguments.
-        """
-        super().__init__(input=input, output=output, state=state, **kwargs)
+    use_cuda: bool
+    device_map: str | Dict | None
 
     def process_mms(self, text_input: str, generate_args: dict) -> np.ndarray:
         inputs = self.processor(text_input, return_tensors="pt")
@@ -175,3 +120,43 @@ class TextToSpeechInference(AudioAPI):
             audio_arrays.append(audio_array)
 
         return np.concatenate(audio_arrays)
+
+
+class TextToSpeechInference(AudioBulk, _TextToSpeechInference):
+    def __init__(
+        self,
+        input: BatchInput,
+        output: BatchOutput,
+        state: State,
+        **kwargs,
+    ):
+        """
+        Initializes the TextToSpeechAPI with configurations for text-to-speech processing.
+
+        Args:
+            input (BatchInput): The input data configuration.
+            output (BatchOutput): The output data configuration.
+            state (State): The state configuration.
+            **kwargs: Additional keyword arguments.
+        """
+        super().__init__(input=input, output=output, state=state, **kwargs)
+
+
+class TextToSpeechInferenceStream(AudioStream, _TextToSpeechInference):
+    def __init__(
+        self,
+        input: StreamingInput,
+        output: StreamingOutput,
+        state: State,
+        **kwargs,
+    ):
+        """
+        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
+
+        Args:
+            input (BatchInput): The input data configuration.
+            output (BatchOutput): The output data configuration.
+            state (State): The state configuration.
+            **kwargs: Additional keyword arguments.
+        """
+        super().__init__(input=input, output=output, state=state, **kwargs)

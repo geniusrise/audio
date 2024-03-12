@@ -16,7 +16,7 @@
 from io import BytesIO
 import torch
 from typing import Any, Dict
-from geniusrise import BatchInput, BatchOutput, State
+from geniusrise import BatchInput, BatchOutput, State, StreamingInput, StreamingOutput
 from transformers import AutoModelForCTC, AutoProcessor
 
 from geniusrise_audio.base import AudioBulk, AudioStream
@@ -254,8 +254,8 @@ class SpeechToTextInferenceStream(AudioStream, _SpeechToTextInference):
 
     def __init__(
         self,
-        input: BatchInput,
-        output: BatchOutput,
+        input: StreamingInput,
+        output: StreamingOutput,
         state: State,
         **kwargs,
     ):
