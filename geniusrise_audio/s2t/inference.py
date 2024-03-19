@@ -250,9 +250,6 @@ class SpeechToTextInference(AudioBulk, _SpeechToTextInference):
 
 
 class SpeechToTextInferenceStream(AudioStream, _SpeechToTextInference):
-    model: AutoModelForCTC
-    processor: AutoProcessor
-
     def __init__(
         self,
         input: StreamingInput,

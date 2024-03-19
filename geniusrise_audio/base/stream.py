@@ -25,8 +25,6 @@ from optimum.bettertransformer import BetterTransformer
 from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification
 from whispercpp import Whisper
 
-from geniusrise_audio.base.communication import send_email
-
 
 class AudioStream(Bolt):
     def __init__(
@@ -267,14 +265,3 @@ class AudioStream(Bolt):
             "qint32": torch.qint32,
         }
         return dtype_map.get(precision, torch.float)
-
-    def done(self):
-        """
-        Finalizes the AudioBulk processing. Sends notification email if configured.
-
-        This method should be called after all audio processing tasks are complete.
-        It handles any final steps such as sending notifications or cleaning up resources.
-        """
-        if self.notification_email:
-            self.output.flush()
-            send_email(recipient=self.notification_email, bucket_name=self.output.bucket, prefix=self.output.s3_folder)
