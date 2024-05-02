@@ -19,11 +19,11 @@ from typing import Dict
 
 from geniusrise import State, StreamingInput, StreamingOutput
 
-from geniusrise_audio.s2t.inference import SpeechToTextInference
+from geniusrise_audio.s2t.inference import SpeechToTextInferenceStream
 from geniusrise_audio.s2t.util import decode_audio
 
 
-class SpeechToTextKafka(SpeechToTextInference):
+class SpeechToTextKafka(SpeechToTextInferenceStream):
     """
     SpeechToTextSpark leverages Apache Spark and PyTorch's distributed computing capabilities
     to perform speech-to-text inference on a large scale. It inherits from SpeechToTextInference
@@ -81,7 +81,12 @@ class SpeechToTextKafka(SpeechToTextInference):
         self.num_gpus = num_gpus
 
     def prepare(self):
-        # Load models and processors as defined in the base class
+        """
+        Loads models and processors as defined in the base class.
+
+        Returns:
+            Tuple[AutoModelForCTC, AutoProcessor]: The loaded model and processor.
+        """
         return self.load_models(
             model_name=self.model_name,
             processor_name=self.processor_name,
@@ -102,6 +107,10 @@ class SpeechToTextKafka(SpeechToTextInference):
         )
 
     def transcribe_stream(self):
+        """
+        Continuously consumes audio data from the Kafka input stream, processes it,
+        and sends transcriptions to the Kafka output stream.
+        """
         self.model, self.processor = self.prepare()
 
         for data in self.input.get():

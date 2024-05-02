@@ -37,12 +37,12 @@ class AudioStream(Bolt):
         **kwargs,
     ):
         """
-        Initializes the AudioBulk with configurations and sets up logging.
-        Prepares the environment for audio processing tasks.
+        Initializes the AudioStream with configurations and sets up logging.
+        Prepares the environment for audio streaming tasks.
 
         Args:
-            input (BatchInput): The input data configuration for the audio processing task.
-            output (BatchOutput): The output data configuration for the results of the audio processing.
+            input (StreamingInput): The input data configuration for the audio streaming task.
+            output (StreamingOutput): The output data configuration for the results of the audio streaming.
             state (State): The state configuration for the Bolt, managing its operational status.
             **kwargs: Additional keyword arguments for extended functionality and model configurations.
         """
@@ -72,11 +72,12 @@ class AudioStream(Bolt):
         **model_args: Any,
     ) -> Tuple[AutoModelForAudioClassification, AutoFeatureExtractor]:
         """
-        Loads and configures the specified audio model and processor for audio processing.
+        Loads and configures the specified audio model and processor for audio streaming.
 
         Args:
             model_name (str): Name or path of the audio model to load.
             processor_name (str): Name or path of the processor to load.
+            model_location (Optional[str]): Local path to the model files.
             model_revision (Optional[str]): Specific model revision to load (e.g., commit hash).
             processor_revision (Optional[str]): Specific processor revision to load.
             model_class (str): Class of the model to be loaded.
@@ -115,7 +116,7 @@ class AudioStream(Bolt):
                     precision=precision,
                     cpu_threads=multiprocessing.cpu_count(),
                     num_workers=1,
-                    dowload_root=None,
+                    download_root=None,
                 ),
                 None,
             )
@@ -208,6 +209,16 @@ class AudioStream(Bolt):
         return model, processor
 
     def load_models_whisper_cpp(self, model_name: str, basedir: str):
+        """
+        Loads the specified model using whisper.cpp.
+
+        Args:
+            model_name (str): Name of the model to load.
+            basedir (str): Base directory for saving the model files.
+
+        Returns:
+            The loaded model.
+        """
         return Whisper.from_pretrained(
             model_name=model_name,
             basedir=basedir,
@@ -221,8 +232,23 @@ class AudioStream(Bolt):
         quantization=0,
         cpu_threads=4,
         num_workers=1,
-        dowload_root=None,
+        download_root=None,
     ):
+        """
+        Loads the specified model using faster-whisper.
+
+        Args:
+            model_name: Name or path of the model to load.
+            device_map (str): Device to use for computation (e.g., "cpu", "cuda").
+            precision (str): Precision for model computation (e.g., "float16", "int8").
+            quantization (int): Quantization level for the model (0 for no quantization).
+            cpu_threads (int): Number of CPU threads to use.
+            num_workers (int): Number of worker processes to use.
+            download_root (str): Root directory for downloading model files.
+
+        Returns:
+            The loaded model.
+        """
         return WhisperModel(
             model_size_or_path=model_name,
             device=device_map.split(":")[0] if ":" in device_map else device_map,
@@ -230,7 +256,7 @@ class AudioStream(Bolt):
             compute_type=precision if quantization == 0 else f"int{quantization}_{precision}",
             cpu_threads=cpu_threads,
             num_workers=num_workers,
-            download_root=dowload_root,
+            download_root=download_root,
             local_files_only=False,
         )
 
@@ -268,11 +294,11 @@ class AudioStream(Bolt):
         }
         return dtype_map.get(precision, torch.float)
 
-    def done(self):
+    def __done(self):
         """
-        Finalizes the AudioBulk processing. Sends notification email if configured.
+        Finalizes the AudioStream processing. Sends notification email if configured.
 
-        This method should be called after all audio processing tasks are complete.
+        This method should be called after all audio streaming tasks are complete.
         It handles any final steps such as sending notifications or cleaning up resources.
         """
         if self.notification_email:

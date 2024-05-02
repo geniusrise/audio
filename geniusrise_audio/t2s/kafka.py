@@ -19,10 +19,10 @@ from typing import Dict
 import numpy as np
 from geniusrise import State, StreamingInput, StreamingOutput
 
-from geniusrise_audio.t2s.inference import TextToSpeechInference
+from geniusrise_audio.t2s.inference import TextToSpeechInferenceStream
 
 
-class TextToSpeechKafka(TextToSpeechInference):
+class TextToSpeechKafka(TextToSpeechInferenceStream):
     """
     TextToSpeechKafka leverages Apache Kafka for real-time text-to-speech inference.
     It inherits from TextToSpeechInference and processes text data from a Kafka input stream,
@@ -59,7 +59,12 @@ class TextToSpeechKafka(TextToSpeechInference):
         self.model_args = model_args
 
     def prepare(self):
-        # Load models and processors as defined in the base class
+        """
+        Loads models and processors as defined in the base class.
+
+        Returns:
+            Tuple[AutoModelForSeq2SeqLM, AutoProcessor]: The loaded model and processor.
+        """
         return self.load_models(
             model_name=self.model_name,
             processor_name=self.processor_name,
@@ -73,6 +78,10 @@ class TextToSpeechKafka(TextToSpeechInference):
         )
 
     def synthesize_stream(self):
+        """
+        Continuously consumes text data from the Kafka input stream, processes it,
+        and sends speech synthesis to the Kafka output stream.
+        """
         self.model, self.processor = self.prepare()
 
         for data in self.input.get():
