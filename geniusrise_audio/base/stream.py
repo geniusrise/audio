@@ -24,6 +24,7 @@ from geniusrise.logging import setup_logger
 from optimum.bettertransformer import BetterTransformer
 from transformers import AutoConfig, AutoFeatureExtractor, AutoModelForAudioClassification
 from whispercpp import Whisper
+
 from geniusrise_audio.base.communication import send_email
 
 
