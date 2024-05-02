@@ -54,7 +54,13 @@ class TextToSpeechSpark(TextToSpeechInference):
             output (BatchOutput): The output data configuration.
             state (State): The state configuration.
             spark_session (SparkSession): Active Spark session.
-            **kwargs: Additional keyword arguments.
+            model_name (str): Name or path of the model.
+            model_class (str): Class name of the model (default "AutoModelForSeq2SeqLM").
+            processor_class (str): Class name of the processor (default "AutoProcessor").
+            use_cuda (bool): Whether to use CUDA for model inference (default False).
+            device_map (str | Dict | None): Specific device to use for computation (default "auto").
+            num_gpus (int): Number of GPUs to use for distributed processing (default 1).
+            **model_args (Any): Additional arguments for model loading.
         """
         super().__init__(input=input, output=output, state=state)
         self.spark = spark_session
@@ -67,7 +73,12 @@ class TextToSpeechSpark(TextToSpeechInference):
         self.num_gpus = num_gpus
 
     def prepare(self):
-        # Load models and processors as defined in the base class
+        """
+        Load models and processors as defined in the base class.
+
+        Returns:
+            Tuple[AutoModelForSeq2SeqLM, AutoProcessor]: The loaded model and processor.
+        """
         return self.load_models(
             model_name=self.model_name,
             processor_name=self.processor_name,
@@ -88,6 +99,14 @@ class TextToSpeechSpark(TextToSpeechInference):
     ) -> DataFrame:
         """
         Synthesize text data in a Spark DataFrame to speech using distributed processing.
+
+        Args:
+            df (DataFrame): The input DataFrame containing text data.
+            text_col (str): The name of the column containing text data.
+            voice_preset_col (str): The name of the column containing voice preset data.
+
+        Returns:
+            DataFrame: The output DataFrame with synthesized speech.
         """
         # Add a unique ID to each row to use for joining later
         df_with_id = df.withColumn("row_id", monotonically_increasing_id())

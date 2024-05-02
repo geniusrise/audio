@@ -63,7 +63,22 @@ class SpeechToTextSpark(SpeechToTextInference):
             output (BatchOutput): The output data configuration.
             state (State): The state configuration.
             spark_session (SparkSession): Active Spark session.
-            **kwargs: Additional keyword arguments.
+            model_name (str): Name or path of the model.
+            model_class (str): Class name of the model (default "AutoModelForCTC").
+            processor_class (str): Class name of the processor (default "AutoProcessor").
+            use_cuda (bool): Whether to use CUDA for model inference (default False).
+            precision (str): Precision for model computation (default "float16").
+            quantization (int): Level of quantization for optimizing model size and speed (default 0).
+            device_map (str | Dict | None): Specific device to use for computation (default "auto").
+            max_memory (Dict[int, str]): Maximum memory configuration for devices.
+            torchscript (bool): Enable TorchScript for model optimization.
+            compile (bool): Enable Torch JIT compilation.
+            batch_size (int): Number of samples per batch (default 8).
+            model_sampling_rate (int): Sampling rate of the model (default 16_000).
+            chunk_size (int): Size of audio chunks to process (default 0).
+            overlap_size (int): Size of overlap between audio chunks (default 0).
+            num_gpus (int): Number of GPUs to use for distributed processing (default 1).
+            **model_args (Any): Additional arguments for model loading.
         """
         super().__init__(input=input, output=output, state=state)
         self.spark = spark_session
@@ -85,7 +100,12 @@ class SpeechToTextSpark(SpeechToTextInference):
         self.num_gpus = num_gpus
 
     def prepare(self):
-        # Load models and processors as defined in the base class
+        """
+        Load models and processors as defined in the base class.
+
+        Returns:
+            Tuple[AutoModelForCTC, AutoProcessor]: The loaded model and processor.
+        """
         return self.load_models(
             model_name=self.model_name,
             processor_name=self.processor_name,
@@ -112,6 +132,13 @@ class SpeechToTextSpark(SpeechToTextInference):
     ) -> DataFrame:
         """
         Transcribe audio data in a Spark DataFrame to text using distributed processing.
+
+        Args:
+            df (DataFrame): The input DataFrame containing audio data.
+            audio_col (str): The name of the column containing audio data.
+
+        Returns:
+            DataFrame: The output DataFrame with transcribed text.
         """
         # Add a unique ID to each row to use for joining later
         df_with_id = df.withColumn("row_id", monotonically_increasing_id())
