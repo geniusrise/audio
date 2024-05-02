@@ -153,7 +153,7 @@ class SpeechToTextSpark(SpeechToTextInference):
         transcribed_rdd = distributor.run(distributed_transcribe, df_with_id.select("row_id", audio_col).rdd)
 
         # Convert RDD back to DataFrame and rename columns appropriately
-        transcribed_df = transcribed_rdd.toDF(["row_id", "transcription"])
+        transcribed_df = transcribed_rdd.toDF(["row_id", "transcription"])  # type: ignore
 
         # Join the transcribed DataFrame with the original DataFrame using the row_id
         result_df = df_with_id.join(transcribed_df, on="row_id").drop("row_id")

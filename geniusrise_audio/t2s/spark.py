@@ -129,7 +129,7 @@ class TextToSpeechSpark(TextToSpeechInference):
         )
 
         # Convert RDD back to DataFrame and rename columns appropriately
-        synthesized_df = synthesized_rdd.toDF(["row_id", "audio"])
+        synthesized_df = synthesized_rdd.toDF(["row_id", "audio"])  # type: ignore
 
         # Join the synthesized DataFrame with the original DataFrame using the row_id
         result_df = df_with_id.join(synthesized_df, on="row_id").drop("row_id")
