@@ -25,6 +25,19 @@ from geniusrise_audio.base import AudioBulk, AudioStream
 
 
 class _TextToSpeechInference:
+    """
+    _TextToSpeechInference is a base class that provides common functionality for text-to-speech inference.
+    It contains methods for processing text input using various models and frameworks.
+
+    Attributes:
+        model (AutoModelForSeq2SeqLM): The text-to-speech model.
+        tokenizer (AutoTokenizer): The tokenizer for preparing text input for the model.
+        processor (AutoProcessor): The processor for post-processing the generated speech.
+        vocoder (Any): The vocoder for converting generated features to waveforms.
+        embeddings_dataset (Any): The dataset containing speaker embeddings for voice customization.
+        use_cuda (bool): Flag indicating whether to use CUDA for GPU acceleration.
+        device_map (str | Dict | None): Device mapping for model execution.
+    """
 
     model: AutoModelForSeq2SeqLM
     tokenizer: AutoTokenizer
@@ -35,6 +48,16 @@ class _TextToSpeechInference:
     device_map: str | Dict | None
 
     def process_mms(self, text_input: str, generate_args: dict) -> np.ndarray:
+        """
+        Processes text input with the MMS model.
+
+        Args:
+            text_input (str): The input text for speech synthesis.
+            generate_args (Dict[str, Any]): Additional arguments for speech synthesis.
+
+        Returns:
+            np.ndarray: The synthesized speech waveform.
+        """
         inputs = self.processor(text_input, return_tensors="pt")
 
         if self.use_cuda:
@@ -47,6 +70,17 @@ class _TextToSpeechInference:
         return waveform
 
     def process_bark(self, text_input: str, voice_preset: str, generate_args: dict) -> np.ndarray:
+        """
+        Processes text input with the BARK model.
+
+        Args:
+            text_input (str): The input text for speech synthesis.
+            voice_preset (str): The voice preset to use for synthesis.
+            generate_args (Dict[str, Any]): Additional arguments for speech synthesis.
+
+        Returns:
+            np.ndarray: The synthesized speech waveform.
+        """
         # Process the input text with the selected voice preset
         # Presets here: https://suno-ai.notion.site/8b8e8749ed514b0cbf3f699013548683?v=bc67cff786b04b50b3ceb756fd05f68c
         chunks = text_input.split(".")
@@ -66,6 +100,17 @@ class _TextToSpeechInference:
         return np.concatenate(audio_arrays)
 
     def process_speecht5_tts(self, text_input: str, voice_preset: str, generate_args: dict) -> np.ndarray:
+        """
+        Processes text input with the SpeechT5-TTS model.
+
+        Args:
+            text_input (str): The input text for speech synthesis.
+            voice_preset (str): The voice preset to use for synthesis.
+            generate_args (Dict[str, Any]): Additional arguments for speech synthesis.
+
+        Returns:
+            np.ndarray: The synthesized speech waveform.
+        """
         if not self.vocoder:
             self.vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
             if self.use_cuda:
@@ -95,6 +140,17 @@ class _TextToSpeechInference:
         return np.concatenate(audio_arrays)
 
     def process_seamless(self, text_input: str, voice_preset: str, generate_args: dict) -> np.ndarray:
+        """
+        Processes text input with the Seamless model.
+
+        Args:
+            text_input (str): The input text for speech synthesis.
+            voice_preset (str): The voice preset to use for synthesis.
+            generate_args (Dict[str, Any]): Additional arguments for speech synthesis.
+
+        Returns:
+            np.ndarray: The synthesized speech waveform.
+        """
         # Splitting the input text into chunks based on full stops to manage long text inputs
         chunks = text_input.split(".")
         audio_arrays: List[np.ndarray] = []
@@ -132,7 +188,7 @@ class TextToSpeechInference(AudioBulk, _TextToSpeechInference):
         **kwargs,
     ):
         """
-        Initializes the TextToSpeechAPI with configurations for text-to-speech processing.
+        TextToSpeechInference is a class for performing text-to-speech inference using bulk processing.
 
         Args:
             input (BatchInput): The input data configuration.
@@ -152,7 +208,7 @@ class TextToSpeechInferenceStream(AudioStream, _TextToSpeechInference):
         **kwargs,
     ):
         """
-        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
+        TextToSpeechInferenceStream is a class for performing text-to-speech inference using streaming input.
 
         Args:
             input (BatchInput): The input data configuration.

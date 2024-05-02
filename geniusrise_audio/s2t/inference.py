@@ -25,6 +25,16 @@ from geniusrise_audio.s2t.util import chunk_audio, whisper_alignment_heads
 
 
 class _SpeechToTextInference:
+    """
+    _SpeechToTextInference is a base class that provides common functionality for speech-to-text inference.
+    It contains methods for processing audio input using various models and frameworks.
+
+    Attributes:
+        model (AutoModelForCTC): The speech-to-text model.
+        processor (AutoProcessor): The processor for preparing audio input for the model.
+        use_cuda (bool): Flag indicating whether to use CUDA for GPU acceleration.
+        device_map (str | Dict | None): Device mapping for model execution.
+    """
 
     model: AutoModelForCTC
     processor: AutoProcessor
@@ -90,7 +100,18 @@ class _SpeechToTextInference:
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
     ):
         """
-        Process audio input with the Whisper model.
+        Processes audio input with the Whisper model.
+
+        Args:
+            audio_input (Any): The audio input for transcription.
+            model_sampling_rate (int): The sampling rate of the model.
+            processor_args (Dict[str, Any]): Arguments for the audio processor.
+            chunk_size (int): The size of audio chunks to process.
+            overlap_size (int): The size of overlap between audio chunks.
+            generate_args (Dict[str, Any]): Additional arguments for transcription.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the transcription results.
         """
         alignment_heads = [v for k, v in whisper_alignment_heads.items() if k in self.model_name][0]
         self.model.generation_config.alignment_heads = alignment_heads
@@ -139,7 +160,18 @@ class _SpeechToTextInference:
         self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size, generate_args
     ):
         """
-        Process audio input with the Whisper model.
+        Processes audio input with the Seamless model.
+
+        Args:
+            audio_input (Any): The audio input for transcription.
+            model_sampling_rate (int): The sampling rate of the model.
+            processor_args (Dict[str, Any]): Arguments for the audio processor.
+            chunk_size (int): The size of audio chunks to process.
+            overlap_size (int): The size of overlap between audio chunks.
+            generate_args (Dict[str, Any]): Additional arguments for transcription.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the transcription results.
         """
         audio_input = audio_input.squeeze(0)
 
@@ -178,7 +210,17 @@ class _SpeechToTextInference:
 
     def process_wav2vec2(self, audio_input, model_sampling_rate, processor_args, chunk_size, overlap_size):
         """
-        Process audio input with the Wav2Vec2 model.
+        Processes audio input with the Wav2Vec2 model.
+
+        Args:
+            audio_input (Any): The audio input for transcription.
+            model_sampling_rate (int): The sampling rate of the model.
+            processor_args (Dict[str, Any]): Arguments for the audio processor.
+            chunk_size (int): The size of audio chunks to process.
+            overlap_size (int): The size of overlap between audio chunks.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the transcription results.
         """
         # TensorFloat32 tensor cores for float32 matrix multiplication availabl
         torch.set_float32_matmul_precision("high")
@@ -238,7 +280,7 @@ class SpeechToTextInference(AudioBulk, _SpeechToTextInference):
         **kwargs,
     ):
         """
-        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
+        SpeechToTextInference is a class for performing speech-to-text inference using bulk processing.
 
         Args:
             input (BatchInput): The input data configuration.
@@ -258,7 +300,7 @@ class SpeechToTextInferenceStream(AudioStream, _SpeechToTextInference):
         **kwargs,
     ):
         """
-        Initializes the SpeechToTextAPI with configurations for speech-to-text processing.
+        SpeechToTextInferenceStream is a class for performing speech-to-text inference using streaming input.
 
         Args:
             input (BatchInput): The input data configuration.
