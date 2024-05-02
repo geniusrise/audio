@@ -355,7 +355,7 @@ class TextToSpeechBulk(TextToSpeechInference):
             self._process_and_save_batch(batch_texts, i, voice_preset=voice_preset, generate_args=generation_args)
 
         # Finalize
-        self.done()
+        self.__done()
 
     def _process_and_save_batch(
         self, batch_texts: List[str], batch_idx: int, voice_preset: str, generate_args: dict
@@ -366,6 +366,8 @@ class TextToSpeechBulk(TextToSpeechInference):
         Args:
             batch_texts (List[str]): The batch of texts to synthesize.
             batch_idx (int): The batch index.
+            voice_preset (str): The voice preset to use for synthesis.
+            generate_args (dict): Additional arguments for the synthesis process.
         """
         results = []
 

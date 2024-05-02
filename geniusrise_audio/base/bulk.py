@@ -451,7 +451,7 @@ class AudioBulk(Bolt):
                     precision=precision,
                     cpu_threads=multiprocessing.cpu_count(),
                     num_workers=1,
-                    dowload_root=None,
+                    download_root=None,
                 ),
                 None,
             )
@@ -559,7 +559,7 @@ class AudioBulk(Bolt):
         quantization=0,
         cpu_threads=4,
         num_workers=1,
-        dowload_root=None,
+        download_root=None,
     ):
         return WhisperModel(
             model_size_or_path=model_name,
@@ -568,7 +568,7 @@ class AudioBulk(Bolt):
             compute_type=precision if quantization == 0 else f"int{quantization}_{precision}",
             cpu_threads=cpu_threads,
             num_workers=num_workers,
-            download_root=dowload_root,
+            download_root=download_root,
             local_files_only=False,
         )
 
@@ -606,7 +606,7 @@ class AudioBulk(Bolt):
         }
         return dtype_map.get(precision, torch.float)
 
-    def done(self):
+    def __done(self):
         """
         Finalizes the AudioBulk processing. Sends notification email if configured.
 

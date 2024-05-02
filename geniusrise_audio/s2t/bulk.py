@@ -285,7 +285,7 @@ class SpeechToTextBulk(SpeechToTextInference):
                     results.append(transcriptions)
 
             self._save_transcriptions(transcriptions=results, filenames=batch, chunk_idx=i, output_path=output_path)
-        self.done()
+        self.__done()
 
     def _save_transcriptions(self, filenames: List[str], transcriptions: List[str], chunk_idx: int, output_path: str):
         """
@@ -294,8 +294,8 @@ class SpeechToTextBulk(SpeechToTextInference):
         Args:
             filenames (List[str]): List of filenames of the transcribed audio files.
             transcriptions (List[str]): List of transcribed texts.
-            output_path (str): Path to the output folder.
             chunk_idx (int): Index of the current batch (for naming files).
+            output_path (str): Path to the output folder.
         """
         data_to_save = [
             {"input": filename, "prediction": transcription}
