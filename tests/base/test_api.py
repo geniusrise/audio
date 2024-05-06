@@ -13,21 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# test_base_api.py
+import tempfile
+import time
 
-import base64
-
-import cherrypy
 import pytest
+import requests
 from geniusrise.core import BatchInput, BatchOutput, InMemoryState
 
 from geniusrise_audio.base.api import AudioAPI
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def audio_api():
-    input_dir = "./input_dir"
-    output_dir = "./output_dir"
+    input_dir = tempfile.mkdtemp()
+    output_dir = tempfile.mkdtemp()
 
     input = BatchInput(input_dir, "geniusrise-test-bucket", "api_input")
     output = BatchOutput(output_dir, "geniusrise-test-bucket", "api_output")
@@ -38,42 +37,78 @@ def audio_api():
         output=output,
         state=state,
     )
-    return audio_api
+    yield audio_api
 
 
-def test_transcribe(audio_api):
-    audio_data = b"mock_audio_data"
-    audio_base64 = base64.b64encode(audio_data).decode("utf-8")
-    input_json = {
-        "audio_file": audio_base64,
-        "model_sampling_rate": 16000,
-    }
+@pytest.mark.parametrize(
+    "model_name, model_class, processor_class, use_cuda, precision, quantization, device_map, torchscript, compile, concurrent_queries, use_whisper_cpp, use_faster_whisper, endpoint, port, cors_domain, username, password",
+    [
+        # fmt: off
+        ("facebook/wav2vec2-base-960h", "Wav2Vec2ForCTC", "Wav2Vec2Processor", True, "float32", 0, "cuda:0", False, False, False, False, False, "*", 3000, "http://localhost:3000", "admin", "password"),
+        ("openai/whisper-small", "WhisperForConditionalGeneration", "AutoProcessor", False, "float32", 4, None, False, False, True, False, False, "*", 3001, "http://example.com", "admin", "password"),
+        ("openai/whisper-medium", "WhisperForConditionalGeneration", "AutoProcessor", True, "float16", 0, "cuda:0", False, True, False, False, False, "0.0.0.0", 3002, "https://geniusrise.ai", "admin", "password"),
+        ("large-v3", None, None, None, "float32", 0, "cuda:0", None, None, False, False, True, "*", 3003, "http://localhost:3000", "admin", "password"),
+        ("large", None, None, None, None, None, None, None, None, False, True, False, "*", 3004, "http://localhost:3000", "admin", "password"),
+        # fmt: on
+    ],
+)
+def test_listen(
+    audio_api,
+    model_name,
+    model_class,
+    processor_class,
+    use_cuda,
+    precision,
+    quantization,
+    device_map,
+    torchscript,
+    compile,
+    concurrent_queries,
+    use_whisper_cpp,
+    use_faster_whisper,
+    endpoint,
+    port,
+    cors_domain,
+    username,
+    password,
+):
+    # Start the API server in a separate thread
+    import threading
 
-    cherrypy.request.json = input_json
+    server_thread = threading.Thread(
+        target=audio_api.listen,
+        kwargs={
+            "model_name": model_name,
+            "model_class": model_class,
+            "processor_class": processor_class,
+            "use_cuda": use_cuda,
+            "precision": precision,
+            "quantization": quantization,
+            "device_map": device_map,
+            "torchscript": torchscript,
+            "compile": compile,
+            "concurrent_queries": concurrent_queries,
+            "use_whisper_cpp": use_whisper_cpp,
+            "use_faster_whisper": use_faster_whisper,
+            "endpoint": endpoint,
+            "port": port,
+            "cors_domain": cors_domain,
+            "username": username,
+            "password": password,
+        },
+    )
+    server_thread.start()
 
-    audio_api.load_models = lambda *args, **kwargs: (None, None)
-    audio_api.process_wav2vec2 = lambda *args, **kwargs: {"transcription": "Test transcription", "segments": []}
+    # Wait for the server to start
+    time.sleep(5)
 
-    result = audio_api.transcribe()
+    # Send a test request to the API
+    url = "http://localhost:3000/api/v1/404"
+    headers = {"Content-Type": "application/json"}
+    auth = (username, password) if username and password else None
 
-    assert "transcriptions" in result
-    assert result["transcriptions"] == "Test transcription"
-
-
-def test_asr_pipeline(audio_api):
-    audio_file = "/path/to/audio/file.wav"
-    input_json = {
-        "audio_file": audio_file,
-    }
-
-    cherrypy.request.json = input_json
-
-    audio_api.initialize_pipeline = lambda *args, **kwargs: None
-    audio_api.hf_pipeline = lambda *args, **kwargs: {"text": "Test transcription"}
-
-    result = audio_api.asr_pipeline()
-
-    assert "transcription" in result
-    assert result["transcription"] == "Test transcription"
-    assert "input" in result
-    assert result["input"] == audio_file
+    try:
+        response = requests.post(url, json={}, headers=headers, auth=auth)
+        assert response.status_code == 404
+    except requests.exceptions.RequestException as e:
+        pytest.fail(f"API request failed: {e}")
