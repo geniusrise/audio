@@ -31,7 +31,7 @@ def s2t_kafka():
 
     input = StreamingInput(input_data)
     output = StreamingOutput(output_data)
-    state = InMemoryState()
+    state = InMemoryState(1)
 
     s2t_kafka = SpeechToTextKafka(
         input=input,

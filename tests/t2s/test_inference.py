@@ -27,9 +27,9 @@ def t2s_inference():
     input_dir = "./input_dir"
     output_dir = "./output_dir"
 
-    input = BatchInput(input_dir, "geniusrise-test", "api_input")
-    output = BatchOutput(output_dir, "geniusrise-test", "api_output")
-    state = InMemoryState()
+    input = BatchInput(input_dir, "geniusrise-test-bucket", "api_input")
+    output = BatchOutput(output_dir, "geniusrise-test-bucket", "api_output")
+    state = InMemoryState(1)
 
     t2s_inference = TextToSpeechInference(
         input=input,
@@ -49,7 +49,7 @@ def t2s_inference_stream():
 
     input = StreamingInput(input_data)
     output = StreamingOutput(output_data)
-    state = InMemoryState()
+    state = InMemoryState(1)
 
     t2s_inference_stream = TextToSpeechInferenceStream(
         input=input,

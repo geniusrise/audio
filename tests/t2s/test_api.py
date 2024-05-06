@@ -30,9 +30,9 @@ def t2s_api():
     input_dir = "./input_dir"
     output_dir = "./output_dir"
 
-    input = BatchInput(input_dir, "geniusrise-test", "api_input")
-    output = BatchOutput(output_dir, "geniusrise-test", "api_output")
-    state = InMemoryState()
+    input = BatchInput(input_dir, "geniusrise-test-bucket", "api_input")
+    output = BatchOutput(output_dir, "geniusrise-test-bucket", "api_output")
+    state = InMemoryState(1)
 
     t2s_api = TextToSpeechAPI(
         input=input,

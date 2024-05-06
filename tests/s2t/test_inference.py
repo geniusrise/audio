@@ -26,9 +26,9 @@ def s2t_inference():
     input_dir = "./input_dir"
     output_dir = "./output_dir"
 
-    input = BatchInput(input_dir, "geniusrise-test", "api_input")
-    output = BatchOutput(output_dir, "geniusrise-test", "api_output")
-    state = InMemoryState()
+    input = BatchInput(input_dir, "geniusrise-test-bucket", "api_input")
+    output = BatchOutput(output_dir, "geniusrise-test-bucket", "api_output")
+    state = InMemoryState(1)
 
     s2t_inference = SpeechToTextInference(
         input=input,
@@ -48,7 +48,7 @@ def s2t_inference_stream():
 
     input = StreamingInput(input_data)
     output = StreamingOutput(output_data)
-    state = InMemoryState()
+    state = InMemoryState(1)
 
     s2t_inference_stream = SpeechToTextInferenceStream(
         input=input,

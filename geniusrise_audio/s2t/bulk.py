@@ -222,7 +222,6 @@ class SpeechToTextBulk(SpeechToTextInference):
         # Load dataset
         audio_files = []
         for filename in glob.glob(f"{dataset_path}/**/*", recursive=True):
-            print(filename, dataset_path, "+++++++++++++++++++++++++++++++++++++++")
             extension = os.path.splitext(filename)[1]
             if extension.lower() not in [".wav", ".mp3", ".flac", ".ogg"]:
                 continue

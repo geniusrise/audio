@@ -184,7 +184,10 @@ class TextToSpeechBulk(TextToSpeechInference):
             else:
                 data = []
                 for filename in glob.glob(f"{dataset_path}/**/*", recursive=True):
-                    filepath = os.path.join(dataset_path, filename)
+                    if dataset_path not in filename:
+                        filepath = os.path.join(dataset_path, filename)
+                    else:
+                        filepath = filename
                     if filename.endswith(".jsonl"):
                         with open(filepath, "r") as f:
                             for line in f:
@@ -355,7 +358,7 @@ class TextToSpeechBulk(TextToSpeechInference):
             self._process_and_save_batch(batch_texts, i, voice_preset=voice_preset, generate_args=generation_args)
 
         # Finalize
-        self.__done()
+        self._done()
 
     def _process_and_save_batch(
         self, batch_texts: List[str], batch_idx: int, voice_preset: str, generate_args: dict

@@ -34,7 +34,7 @@ def t2s_kafka():
 
     input = StreamingInput(input_data)
     output = StreamingOutput(output_data)
-    state = InMemoryState()
+    state = InMemoryState(1)
 
     t2s_kafka = TextToSpeechKafka(
         input=input,

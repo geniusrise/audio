@@ -294,7 +294,7 @@ class AudioStream(Bolt):
         }
         return dtype_map.get(precision, torch.float)
 
-    def __done(self):
+    def _done(self):
         """
         Finalizes the AudioStream processing. Sends notification email if configured.
 

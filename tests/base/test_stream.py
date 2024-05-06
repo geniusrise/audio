@@ -31,7 +31,7 @@ def audio_stream():
 
     input = StreamingInput(input_data)
     output = StreamingOutput(output_data)
-    state = InMemoryState()
+    state = InMemoryState(1)
 
     audio_stream = AudioStream(
         input=input,
