@@ -41,13 +41,6 @@ def audio_bulk():
     )
     yield audio_bulk
 
-    for directory in (input_dir, output_dir):
-        for file in os.listdir(directory):
-            file_path = os.path.join(directory, file)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-        os.rmdir(directory)
-
 
 @pytest.mark.parametrize(
     "model_name, processor_name, model_class, processor_class, use_cuda, precision, quantization, device_map, max_memory, torchscript, compile, flash_attention, better_transformers, use_whisper_cpp, use_faster_whisper",
