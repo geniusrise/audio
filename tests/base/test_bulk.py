@@ -19,7 +19,7 @@ import pytest
 import torch
 from geniusrise.core import BatchInput, BatchOutput, InMemoryState
 
-from geniusrise_audio.base.bulk import AudioBulk
+from geniusrise_audio import AudioBulk
 
 
 @pytest.fixture(scope="module")
@@ -30,8 +30,8 @@ def audio_bulk():
     os.makedirs(input_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
 
-    input = BatchInput(input_dir, "geniusrise-test", "api_input")
-    output = BatchOutput(output_dir, "geniusrise-test", "api_output")
+    input = BatchInput(input_dir, "geniusrise-test-bucket", "api_input")
+    output = BatchOutput(output_dir, "geniusrise-test-bucket", "api_output")
     state = InMemoryState(1)
 
     audio_bulk = AudioBulk(

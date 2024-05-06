@@ -610,7 +610,7 @@ class AudioBulk(Bolt):
         }
         return dtype_map.get(precision, torch.float)
 
-    def __done(self):
+    def _done(self):
         """
         Finalizes the AudioBulk processing. Sends notification email if configured.
 
