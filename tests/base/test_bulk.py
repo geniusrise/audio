@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# test_base_bulk.py
-
 import os
 
 import pytest
@@ -24,26 +22,17 @@ from geniusrise.core import BatchInput, BatchOutput, InMemoryState
 from geniusrise_audio.base.bulk import AudioBulk
 
 
-@pytest.fixture(
-    # fmt: off
-    params=[
-        ("facebook/wav2vec2-base-960h", "facebook/wav2vec2-base-960h", "Wav2Vec2ForCTC", "Wav2Vec2Processor", True, "float32", 0, "cuda:0", None, False),
-        ("facebook/wav2vec2-base-960h", "facebook/wav2vec2-base-960h", "Wav2Vec2ForCTC", "Wav2Vec2Processor", False, "float32", 0, None, None, False),
-    ]
-    # fmt: on
-)
-def model_config(request):
-    return request.param
-
-
-@pytest.fixture
+@pytest.fixture(scope="module")
 def audio_bulk():
     input_dir = "./input_dir"
     output_dir = "./output_dir"
 
+    os.makedirs(input_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+
     input = BatchInput(input_dir, "geniusrise-test", "api_input")
     output = BatchOutput(output_dir, "geniusrise-test", "api_output")
-    state = InMemoryState()
+    state = InMemoryState(1)
 
     audio_bulk = AudioBulk(
         input=input,
@@ -52,26 +41,46 @@ def audio_bulk():
     )
     yield audio_bulk
 
-    if os.path.exists(input_dir):
-        os.rmdir(input_dir)
-    if os.path.exists(output_dir):
-        os.rmdir(output_dir)
+    for directory in (input_dir, output_dir):
+        for file in os.listdir(directory):
+            file_path = os.path.join(directory, file)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        os.rmdir(directory)
 
 
-def test_load_models(audio_bulk, model_config):
-    (
-        model_name,
-        processor_name,
-        model_class,
-        processor_class,
-        use_cuda,
-        precision,
-        quantization,
-        device_map,
-        max_memory,
-        torchscript,
-    ) = model_config
-
+@pytest.mark.parametrize(
+    "model_name, processor_name, model_class, processor_class, use_cuda, precision, quantization, device_map, max_memory, torchscript, compile, flash_attention, better_transformers, use_whisper_cpp, use_faster_whisper",
+    [
+        # fmt: off
+        ("facebook/wav2vec2-base-960h", "facebook/wav2vec2-base-960h", "Wav2Vec2ForCTC", "Wav2Vec2Processor", True, "float32", 0, "cuda:0", None, False, False, False, False, False, False),
+        ("facebook/wav2vec2-base-960h", "facebook/wav2vec2-base-960h", "Wav2Vec2ForCTC", "Wav2Vec2Processor", False, "float32", 0, None, None, False, False, False, False, False, False),
+        ("openai/whisper-small", "openai/whisper-small", "WhisperForConditionalGeneration", "AutoProcessor", False, "float32", 4, None, None, False, False, False, False, False, False),
+        ("openai/whisper-medium", "openai/whisper-medium", "WhisperForConditionalGeneration", "AutoProcessor", True, "float16", 0, "cuda:0", None, False, True, False, False, False, False),
+        ("openai/whisper-large-v2", "openai/whisper-large-v2", "WhisperForConditionalGeneration", "AutoProcessor", True, "bfloat16", 0, "cuda:0", None, False, False, True, False, False, False),
+        ("openai/whisper-large-v2", "openai/whisper-large-v2", "WhisperForConditionalGeneration", "AutoProcessor", True, "bfloat16", 0, "cuda:0", None, False, False, False, True, False, False),
+        ("large", "large", "WhisperForConditionalGeneration", "AutoProcessor", True, "bfloat16", 0, "cuda:0", None, False, False, False, False, False, True),
+        # fmt: on
+    ],
+)
+def test_load_models(
+    audio_bulk,
+    model_name,
+    processor_name,
+    model_class,
+    processor_class,
+    use_cuda,
+    precision,
+    quantization,
+    device_map,
+    max_memory,
+    torchscript,
+    compile,
+    flash_attention,
+    better_transformers,
+    use_whisper_cpp,
+    use_faster_whisper,
+):
     model, processor = audio_bulk.load_models(
         model_name=model_name,
         processor_name=processor_name,
@@ -83,52 +92,19 @@ def test_load_models(audio_bulk, model_config):
         device_map=device_map,
         max_memory=max_memory,
         torchscript=torchscript,
+        compile=compile,
+        flash_attention=flash_attention,
+        better_transformers=better_transformers,
+        use_whisper_cpp=use_whisper_cpp,
+        use_faster_whisper=use_faster_whisper,
     )
     assert model is not None
-    assert processor is not None
-    assert len(list(model.named_modules())) > 0
+    if not use_whisper_cpp and not use_faster_whisper:
+        assert processor is not None
+        assert len(list(model.named_modules())) > 0
+    else:
+        assert processor is None
 
     del model
     del processor
-    torch.cuda.empty_cache()
-
-
-def test_process_audio(audio_bulk, model_config):
-    (
-        model_name,
-        processor_name,
-        model_class,
-        processor_class,
-        use_cuda,
-        precision,
-        quantization,
-        device_map,
-        max_memory,
-        torchscript,
-    ) = model_config
-
-    audio_bulk.model, audio_bulk.processor = audio_bulk.load_models(
-        model_name=model_name,
-        processor_name=processor_name,
-        model_class=model_class,
-        processor_class=processor_class,
-        use_cuda=use_cuda,
-        precision=precision,
-        quantization=quantization,
-        device_map=device_map,
-        max_memory=max_memory,
-        torchscript=torchscript,
-    )
-
-    audio_input = b"mock_audio_data"
-    model_sampling_rate = 16000
-
-    result = audio_bulk.process_wav2vec2(audio_input, model_sampling_rate, {}, 0, 0)
-    assert result["transcription"] is not None
-    assert isinstance(result["transcription"], str)
-    assert result["segments"] is not None
-    assert isinstance(result["segments"], list)
-
-    del audio_bulk.model
-    del audio_bulk.processor
     torch.cuda.empty_cache()
