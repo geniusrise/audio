@@ -200,39 +200,37 @@ class SpeechToTextBulk(SpeechToTextInference):
         dataset_path = self.input.input_folder
         output_path = self.output.output_folder
 
-        if self.use_whisper_cpp:
-            self.model = self.load_models_whisper_cpp(
-                model_name=self.model_name,
-                basedir=self.output.output_folder,
-            )
-        else:
-            self.model, self.processor = self.load_models(
-                model_name=self.model_name,
-                processor_name=self.processor_name,
-                model_revision=self.model_revision,
-                processor_revision=self.processor_revision,
-                model_class=self.model_class,
-                processor_class=self.processor_class,
-                use_cuda=self.use_cuda,
-                precision=self.precision,
-                quantization=self.quantization,
-                device_map=self.device_map,
-                max_memory=self.max_memory,
-                torchscript=self.torchscript,
-                compile=self.compile,
-                use_whisper_cpp=use_whisper_cpp,
-                use_faster_whisper=use_faster_whisper,
-                **self.model_args,
-            )
+        self.model, self.processor = self.load_models(
+            model_name=self.model_name,
+            processor_name=self.processor_name,
+            model_revision=self.model_revision,
+            processor_revision=self.processor_revision,
+            model_class=self.model_class,
+            processor_class=self.processor_class,
+            use_cuda=self.use_cuda,
+            precision=self.precision,
+            quantization=self.quantization,
+            device_map=self.device_map,
+            max_memory=self.max_memory,
+            torchscript=self.torchscript,
+            compile=self.compile,
+            use_whisper_cpp=use_whisper_cpp,
+            use_faster_whisper=use_faster_whisper,
+            **self.model_args,
+        )
 
         # Load dataset
         audio_files = []
         for filename in glob.glob(f"{dataset_path}/**/*", recursive=True):
+            print(filename, dataset_path, "+++++++++++++++++++++++++++++++++++++++")
             extension = os.path.splitext(filename)[1]
             if extension.lower() not in [".wav", ".mp3", ".flac", ".ogg"]:
                 continue
-            filepath = os.path.join(dataset_path, filename)
-            audio_files.append(filepath)
+            if dataset_path not in filename:
+                filepath = os.path.join(dataset_path, filename)
+                audio_files.append(filepath)
+            else:
+                audio_files.append(filename)
 
         # process batchwise
         for i in range(0, len(audio_files), self.batch_size):
@@ -285,7 +283,7 @@ class SpeechToTextBulk(SpeechToTextInference):
                     results.append(transcriptions)
 
             self._save_transcriptions(transcriptions=results, filenames=batch, chunk_idx=i, output_path=output_path)
-        self.__done()
+        self._done()
 
     def _save_transcriptions(self, filenames: List[str], transcriptions: List[str], chunk_idx: int, output_path: str):
         """

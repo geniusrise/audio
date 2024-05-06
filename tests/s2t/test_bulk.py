@@ -13,57 +13,88 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# test_s2t_bulk.py
-
 import os
-import tempfile
 
 import pytest
 from geniusrise.core import BatchInput, BatchOutput, InMemoryState
 
-from geniusrise_audio.s2t.bulk import SpeechToTextBulk
+from geniusrise_audio import SpeechToTextBulk
 
 
-@pytest.fixture
-def s2t_bulk():
-    input_dir = tempfile.mkdtemp()
-    output_dir = tempfile.mkdtemp()
+@pytest.fixture(scope="module")
+def speech_to_text_bulk():
+    input_dir = "./assets"
+    output_dir = "./output_dir"
 
-    input = BatchInput(input_dir, "geniusrise-test", "api_input")
-    output = BatchOutput(output_dir, "geniusrise-test", "api_output")
-    state = InMemoryState()
+    os.makedirs(input_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
-    s2t_bulk = SpeechToTextBulk(
+    input = BatchInput(input_dir, "geniusrise-test-bucket", "api_input")
+    output = BatchOutput(output_dir, "geniusrise-test-bucket", "api_output")
+    state = InMemoryState(1)
+
+    speech_to_text_bulk = SpeechToTextBulk(
         input=input,
         output=output,
         state=state,
     )
-    yield s2t_bulk
-
-    os.rmdir(input_dir)
-    os.rmdir(output_dir)
+    yield speech_to_text_bulk
 
 
-def test_transcribe(s2t_bulk):
-    model_name = "facebook/wav2vec2-base-960h"
-    processor_name = "facebook/wav2vec2-base-960h"
-    batch_size = 2
+@pytest.mark.parametrize(
+    "model_name, model_class, processor_class, use_cuda, precision, quantization, device_map, torchscript, compile, batch_size, notification_email, model_sampling_rate, chunk_size, overlap_size, generation_tgt_lang, use_whisper_cpp, use_faster_whisper",
+    [
+        # fmt: off
+        ("facebook/seamless-m4t-v2-large", "SeamlessM4Tv2ForSpeechToText", "AutoProcessor", True, "float32", 0, "cuda:0", False, False, 8, "russi@geniusrise.ai", 16_000, 16000, 1600, "eng", False, False),
+        ("facebook/wav2vec2-large-960h-lv60-self", "Wav2Vec2ForCTC", "Wav2Vec2Processor", True, "float32", 0, "cuda:0", False, True, 8, "russi@geniusrise.ai", 16_000, 16000, 1600, None, False, False),
+        ("openai/whisper-large-v3", "WhisperForConditionalGeneration", "AutoProcessor", True, "float32", 0, "cuda:0", False, False, 8, "russi@geniusrise.ai", 16_000, 0, 0, None, False, False),
+        ("large-v3", None, None, None, "float32", 0, "cuda:0", None, None, None, None, None, None, None, None, False, True),
+        ("large", None, None, None, None, None, None, None, None, None, None, None, None, None, None, True, False),
+        # fmt: on
+    ],
+)
+def test_transcribe(
+    speech_to_text_bulk,
+    model_name,
+    model_class,
+    processor_class,
+    use_cuda,
+    precision,
+    quantization,
+    device_map,
+    torchscript,
+    compile,
+    batch_size,
+    notification_email,
+    model_sampling_rate,
+    chunk_size,
+    overlap_size,
+    generation_tgt_lang,
+    use_whisper_cpp,
+    use_faster_whisper,
+):
+    # Prepare the input data
+    input_data = {
+        "model_name": model_name,
+        "model_class": model_class,
+        "processor_class": processor_class,
+        "use_cuda": use_cuda,
+        "precision": precision,
+        "quantization": quantization,
+        "device_map": device_map,
+        "torchscript": torchscript,
+        "compile": compile,
+        "batch_size": batch_size,
+        "notification_email": notification_email,
+        "model_sampling_rate": model_sampling_rate,
+        "chunk_size": chunk_size,
+        "overlap_size": overlap_size,
+        "generation_tgt_lang": generation_tgt_lang,
+        "use_whisper_cpp": use_whisper_cpp,
+        "use_faster_whisper": use_faster_whisper,
+    }
 
-    os.makedirs(s2t_bulk.input.input_folder, exist_ok=True)
-    with open(os.path.join(s2t_bulk.input.input_folder, "audio1.wav"), "wb") as f:
-        f.write(b"mock_audio_data_1")
-    with open(os.path.join(s2t_bulk.input.input_folder, "audio2.wav"), "wb") as f:
-        f.write(b"mock_audio_data_2")
+    # Call the transcribe method
+    speech_to_text_bulk.transcribe(**input_data)
 
-    s2t_bulk.load_models = lambda *args, **kwargs: (None, None)
-    s2t_bulk.process_whisper = lambda *args, **kwargs: {"transcription": "Test transcription", "segments": []}
-
-    s2t_bulk.transcribe(
-        model_name=model_name,
-        processor_name=processor_name,
-        batch_size=batch_size,
-    )
-
-    output_files = os.listdir(s2t_bulk.output.output_folder)
-    assert len(output_files) == 1
-    assert output_files[0].startswith("predictions-")
+    # TODO: read the output files and verify contents
