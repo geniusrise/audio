@@ -432,6 +432,8 @@ class AudioBulk(Bolt):
         self.log.info(f"Loading audio model: {model_name}")
 
         if use_whisper_cpp:
+            if model_name == "local":
+                raise Exception("Local models or custom models are not supported yet")
             return (
                 self.load_models_whisper_cpp(
                     model_name=model_name,
@@ -440,6 +442,8 @@ class AudioBulk(Bolt):
                 None,
             )
         elif use_faster_whisper:
+            if model_name == "local":
+                raise Exception("Local models or custom models are not supported yet")
             return (
                 self.load_models_faster_whisper(
                     model_name=model_name,
