@@ -19,7 +19,7 @@ import tempfile
 import time
 
 import pytest
-import requests
+import requests  # type: ignore
 from geniusrise.core import BatchInput, BatchOutput, InMemoryState
 
 from geniusrise_audio import TextToSpeechAPI
