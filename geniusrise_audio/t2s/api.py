@@ -14,17 +14,17 @@
 # limitations under the License.
 
 import base64
-from typing import Any, Dict
 
 import cherrypy
 from geniusrise import BatchInput, BatchOutput, State
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-from geniusrise_audio.t2s.inference import TextToSpeechInference
+from geniusrise_audio.t2s.inference import _TextToSpeechInference
+from geniusrise_audio import AudioAPI
 from geniusrise_audio.t2s.util import convert_waveform_to_audio_file
 
 
-class TextToSpeechAPI(TextToSpeechInference):
+class TextToSpeechAPI(AudioAPI, _TextToSpeechInference):
     r"""
     TextToSpeechAPI for converting text to speech using various TTS models.
 
@@ -147,49 +147,3 @@ class TextToSpeechAPI(TextToSpeechInference):
         audio_base64 = base64.b64encode(audio_file)
 
         return {"audio_file": audio_base64.decode("utf-8"), "input": text_data}
-
-    def initialize_pipeline(self):
-        """
-        Lazy initialization of the TTS Hugging Face pipeline.
-        """
-        if not self.hf_pipeline:
-            self.hf_pipeline = pipeline(
-                "text-to-speech",
-                model=self.model,
-                tokenizer=self.processor,
-                framework="pt",
-            )
-
-    @cherrypy.expose
-    @cherrypy.tools.json_in()
-    @cherrypy.tools.json_out()
-    @cherrypy.tools.allow(methods=["POST"])
-    def tts_pipeline(self, **kwargs: Any) -> Dict[str, Any]:
-        """
-        Converts text to speech using the Hugging Face pipeline.
-
-        Args:
-            **kwargs (Any): Arbitrary keyword arguments, typically containing 'text' for the input text.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing the base64 encoded audio data.
-
-        Example CURL Request for synthesis:
-        ```bash
-        curl -X POST http://localhost:3000/api/v1/tts_pipeline \
-            -H "Content-Type: application/json" \
-            -u user:password \
-            -d '{"text": "your text here"}'
-        ```
-        """
-        self.initialize_pipeline()  # Initialize the pipeline on first API hit
-
-        input_json = cherrypy.request.json
-        text_data = input_json.get("text")
-
-        result = self.hf_pipeline(text_data, **kwargs)  # type: ignore
-
-        # Convert audio to base64 encoded data
-        audio_base64 = base64.encode(result)  # type: ignore
-
-        return {"audio_file": audio_base64, "input": text_data}
