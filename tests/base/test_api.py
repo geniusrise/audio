@@ -103,7 +103,7 @@ def test_listen(
     time.sleep(5)
 
     # Send a test request to the API
-    url = "http://localhost:3000/api/v1/404"
+    url = f"http://localhost:{port}/api/v1/404"
     headers = {"Content-Type": "application/json"}
     auth = (username, password) if username and password else None
 
