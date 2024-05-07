@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 import transformers
 from faster_whisper import WhisperModel
-from geniusrise import BatchInput, BatchOutput, StreamingInput, StreamingOutput, Bolt, State
+from geniusrise import BatchInput, BatchOutput, Bolt, State
 from geniusrise.logging import setup_logger
 from transformers import (
     AutoConfig,
@@ -620,25 +620,3 @@ class AudioBulk(Bolt):
         if self.notification_email:
             self.output.flush()
             send_email(recipient=self.notification_email, bucket_name=self.output.bucket, prefix=self.output.s3_folder)
-
-
-class AudioStream(AudioBulk):
-    def __init__(
-        self,
-        input: StreamingInput,
-        output: StreamingOutput,
-        state: State,
-        **kwargs,
-    ):
-        """
-        Initializes the AudioStream with configurations and sets up logging.
-        Prepares the environment for audio streaming tasks.
-
-        Args:
-            input (StreamingInput): The input data configuration for the audio streaming task.
-            output (StreamingOutput): The output data configuration for the results of the audio streaming.
-            state (State): The state configuration for the Bolt, managing its operational status.
-            **kwargs: Additional keyword arguments for extended functionality and model configurations.
-        """
-        super().__init__(input=input, output=output, state=state)
-        self.log = setup_logger(self)

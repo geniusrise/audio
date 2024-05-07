@@ -18,10 +18,10 @@ from typing import Dict, List
 import numpy as np
 import torch
 from datasets import load_dataset
-from geniusrise import BatchInput, BatchOutput, State, StreamingInput, StreamingOutput
+from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForSeq2SeqLM, AutoProcessor, AutoTokenizer, SpeechT5HifiGan
 
-from geniusrise_audio.base import AudioBulk, AudioStream
+from geniusrise_audio.base import AudioBulk
 
 
 class _TextToSpeechInference:
@@ -189,26 +189,6 @@ class TextToSpeechInference(AudioBulk, _TextToSpeechInference):
     ):
         """
         TextToSpeechInference is a class for performing text-to-speech inference using bulk processing.
-
-        Args:
-            input (BatchInput): The input data configuration.
-            output (BatchOutput): The output data configuration.
-            state (State): The state configuration.
-            **kwargs: Additional keyword arguments.
-        """
-        super().__init__(input=input, output=output, state=state, **kwargs)
-
-
-class TextToSpeechInferenceStream(AudioStream, _TextToSpeechInference):
-    def __init__(
-        self,
-        input: StreamingInput,
-        output: StreamingOutput,
-        state: State,
-        **kwargs,
-    ):
-        """
-        TextToSpeechInferenceStream is a class for performing text-to-speech inference using streaming input.
 
         Args:
             input (BatchInput): The input data configuration.

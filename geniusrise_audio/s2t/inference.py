@@ -17,10 +17,10 @@ from io import BytesIO
 from typing import Any, Dict
 
 import torch
-from geniusrise import BatchInput, BatchOutput, State, StreamingInput, StreamingOutput
+from geniusrise import BatchInput, BatchOutput, State
 from transformers import AutoModelForCTC, AutoProcessor
 
-from geniusrise_audio.base import AudioBulk, AudioStream
+from geniusrise_audio.base import AudioBulk
 from geniusrise_audio.s2t.util import chunk_audio, whisper_alignment_heads
 
 
@@ -281,26 +281,6 @@ class SpeechToTextInference(AudioBulk, _SpeechToTextInference):
     ):
         """
         SpeechToTextInference is a class for performing speech-to-text inference using bulk processing.
-
-        Args:
-            input (BatchInput): The input data configuration.
-            output (BatchOutput): The output data configuration.
-            state (State): The state configuration.
-            **kwargs: Additional keyword arguments.
-        """
-        super().__init__(input=input, output=output, state=state, **kwargs)
-
-
-class SpeechToTextInferenceStream(AudioStream, _SpeechToTextInference):
-    def __init__(
-        self,
-        input: StreamingInput,
-        output: StreamingOutput,
-        state: State,
-        **kwargs,
-    ):
-        """
-        SpeechToTextInferenceStream is a class for performing speech-to-text inference using streaming input.
 
         Args:
             input (BatchInput): The input data configuration.

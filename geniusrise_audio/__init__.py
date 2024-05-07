@@ -13,6 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .base import AudioAPI, AudioStream, AudioBulk, send_email, send_fine_tuning_email
+from .base import AudioAPI, AudioBulk, send_email, send_fine_tuning_email
 from .s2t import SpeechToTextAPI, SpeechToTextBulk
 from .t2s import TextToSpeechAPI, TextToSpeechBulk
