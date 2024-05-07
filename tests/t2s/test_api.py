@@ -29,8 +29,8 @@ def text_to_speech_api():
     input_dir = tempfile.mkdtemp()
     output_dir = tempfile.mkdtemp()
 
-    input = BatchInput(input_dir, "geniusrise-test", "text_input")
-    output = BatchOutput(output_dir, "geniusrise-test", "audio_output")
+    input = BatchInput(input_dir, "geniusrise-test-bucket", "text_input")
+    output = BatchOutput(output_dir, "geniusrise-test-bucket", "audio_output")
     state = InMemoryState(1)
 
     text_to_speech_api = TextToSpeechAPI(

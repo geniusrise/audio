@@ -15,18 +15,18 @@
 
 import base64
 import multiprocessing
-from typing import Any, Dict
 
 import cherrypy
 import torch
 from geniusrise import BatchInput, BatchOutput, State
-from transformers import AutoModelForCTC, AutoProcessor, pipeline
+from transformers import AutoModelForCTC, AutoProcessor
 
-from geniusrise_audio.s2t.inference import SpeechToTextInference
+from geniusrise_audio.s2t.inference import _SpeechToTextInference
 from geniusrise_audio.s2t.util import decode_audio
+from geniusrise_audio import AudioAPI
 
 
-class SpeechToTextAPI(SpeechToTextInference):
+class SpeechToTextAPI(AudioAPI, _SpeechToTextInference):
     r"""
     SpeechToTextAPI is a subclass of AudioAPI specifically designed for speech-to-text models.
     It extends the functionality to handle speech-to-text processing using various ASR models.
@@ -187,52 +187,3 @@ class SpeechToTextAPI(SpeechToTextInference):
                 )
 
         return {"transcriptions": transcription}
-
-    def initialize_pipeline(self):
-        """
-        Lazy initialization of the ASR Hugging Face pipeline.
-        """
-        if not self.hf_pipeline:
-            self.hf_pipeline = pipeline(
-                "automatic-speech-recognition",
-                model=self.model,
-                tokenizer=self.processor,
-                feature_extractor=self.processor,
-                framework="pt",
-            )
-
-    @cherrypy.expose
-    @cherrypy.tools.json_in()
-    @cherrypy.tools.json_out()
-    @cherrypy.tools.allow(methods=["POST"])
-    def asr_pipeline(self, **kwargs: Any) -> Dict[str, Any]:
-        """
-        Transcribes audio input using the Hugging Face ASR pipeline.
-
-        Args:
-            **kwargs (Any): Arbitrary keyword arguments, typically containing 'audio_file' for the input audio.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing the transcription results.
-
-        Example CURL Request for transcription:
-        ```bash
-        curl -X POST http://localhost:3000/api/v1/asr_pipeline \
-            -H "Content-Type: application/json" \
-            -u user:password \
-            -d '{"audio_file": "path/to/audio/file.wav"}'
-        ```
-        """
-        self.initialize_pipeline()  # Initialize the pipeline on first API hit
-
-        input_json = cherrypy.request.json
-        audio_file = input_json.get("audio_file")
-
-        if not audio_file:
-            raise cherrypy.HTTPError(400, "No audio file provided.")
-
-        if self.hf_pipeline:
-            result = self.hf_pipeline(audio_file, **kwargs)
-            return {"transcription": result["text"], "input": audio_file}
-        else:
-            return {}

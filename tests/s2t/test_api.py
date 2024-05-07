@@ -13,49 +13,133 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# test_s2t_api.py
-
 import base64
+import os
+import tempfile
+import time
 
-import cherrypy
 import pytest
+import requests  # type: ignore
 from geniusrise.core import BatchInput, BatchOutput, InMemoryState
 
-from geniusrise_audio.s2t.api import SpeechToTextAPI
+from geniusrise_audio import SpeechToTextAPI
 
 
-@pytest.fixture
-def s2t_api():
-    input_dir = "./input_dir"
-    output_dir = "./output_dir"
+@pytest.fixture(scope="module")
+def speech_to_text_api():
+    input_dir = tempfile.mkdtemp()
+    output_dir = tempfile.mkdtemp()
 
-    input = BatchInput(input_dir, "geniusrise-test-bucket", "api_input")
-    output = BatchOutput(output_dir, "geniusrise-test-bucket", "api_output")
+    input = BatchInput(input_dir, "geniusrise-test-bucket", "audio_input")
+    output = BatchOutput(output_dir, "geniusrise-test-bucket", "text_output")
     state = InMemoryState(1)
 
-    s2t_api = SpeechToTextAPI(
+    speech_to_text_api = SpeechToTextAPI(
         input=input,
         output=output,
         state=state,
     )
-    return s2t_api
+    yield speech_to_text_api
+
+    # Clean up temporary directories
+    for temp_dir in [input_dir, output_dir]:
+        for file in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, file))
+        os.rmdir(temp_dir)
 
 
-def test_transcribe(s2t_api):
-    audio_data = b"mock_audio_data"
-    audio_base64 = base64.b64encode(audio_data).decode("utf-8")
-    input_json = {
-        "audio_file": audio_base64,
-        "model_sampling_rate": 16000,
-    }
+@pytest.mark.parametrize(
+    "model_name, model_class, processor_class, use_cuda, precision, quantization, device_map, torchscript, compile, endpoint, port, cors_domain, username, password, use_whisper_cpp, use_faster_whisper",
+    [
+        # fmt: off
+        ("facebook/wav2vec2-large-960h-lv60-self", "Wav2Vec2ForCTC", "Wav2Vec2Processor", True, "float32", 0, "cuda:0", False, True, "*", 3000, "http://localhost:3000", None, None, False, False),
+        ("openai/whisper-small", "WhisperForConditionalGeneration", "AutoProcessor", False, "float", 0, None, False, False, "0.0.0.0", 3001, "http://localhost:3000", None, None, False, False),
+        ("openai/whisper-medium", "WhisperForConditionalGeneration", "AutoProcessor", True, "float16", 0, "cuda:0", False, True, "*", 3002, "https://geniusrise.ai", None, None, False, False),
+        # ("large", None, None, None, None, None, None, None, None, "*", 3003, "http://localhost:3000", None, None, True, False),
+        ("large-v3", None, None, None, "float32", 0, "cuda:0", None, None, "*", 3004, "http://localhost:3000", None, None, False, True),
+        # fmt: on
+    ],
+)
+def test_transcribe(
+    speech_to_text_api,
+    model_name,
+    model_class,
+    processor_class,
+    use_cuda,
+    precision,
+    quantization,
+    device_map,
+    torchscript,
+    compile,
+    endpoint,
+    port,
+    cors_domain,
+    username,
+    password,
+    use_whisper_cpp,
+    use_faster_whisper,
+):
+    # Start the API server in a separate thread
+    import threading
 
-    cherrypy.request.json = input_json
+    server_thread = threading.Thread(
+        target=speech_to_text_api.listen,
+        kwargs={
+            "model_name": model_name,
+            "model_class": model_class,
+            "processor_class": processor_class,
+            "use_cuda": use_cuda,
+            "precision": precision,
+            "quantization": quantization,
+            "device_map": device_map,
+            "torchscript": torchscript,
+            "compile": compile,
+            "endpoint": endpoint,
+            "port": port,
+            "cors_domain": cors_domain,
+            "username": username,
+            "password": password,
+            "use_whisper_cpp": use_whisper_cpp,
+            "use_faster_whisper": use_faster_whisper,
+        },
+    )
+    server_thread.start()
 
-    s2t_api.load_models = lambda *args, **kwargs: (None, None)
-    s2t_api.model.config.model_type = "wav2vec2"
-    s2t_api.process_wav2vec2 = lambda *args, **kwargs: {"transcription": "Test transcription", "segments": []}
+    # Wait for the server to start
+    time.sleep(5)
 
-    result = s2t_api.transcribe()
+    # Send a test request to the API
+    url = f"http://localhost:{port}/api/v1/transcribe"
+    headers = {"Content-Type": "application/json"}
+    auth = (username, password) if username and password else None
 
-    assert "transcriptions" in result
-    assert result["transcriptions"] == "Test transcription"
+    with open("./assets/sample.flac", "rb") as audio_file:
+        audio_data = base64.b64encode(audio_file.read()).decode("utf-8")
+
+    if use_faster_whisper:
+        payload = {
+            "audio_file": audio_data,
+        }
+    elif "whisper" in model_name:
+        payload = {
+            "audio_file": audio_data,
+            "model_sampling_rate": 16000,
+        }
+    else:
+        payload = {
+            "audio_file": audio_data,
+            "model_sampling_rate": 16000,
+            "chunk_size": 1280000,
+            "overlap_size": 213333,
+            "do_sample": True,
+            "num_beams": 4,
+            "temperature": 0.6,
+            "tgt_lang": "eng",
+        }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, auth=auth)
+        response.raise_for_status()
+        assert "transcriptions" in response.json()
+    except requests.exceptions.RequestException as e:
+        pytest.fail(f"API request failed: {e}")
