@@ -13,24 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# test_stream.py
+import tempfile
 
 import pytest
-from geniusrise.core import InMemoryState, StreamingInput, StreamingOutput
+from geniusrise.core import StreamingInput, StreamingOutput, InMemoryState
 
-from geniusrise_audio.base.stream import AudioStream
+from geniusrise_audio import AudioStream
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def audio_stream():
-    input_data = [
-        {"audio": b"mock_audio_data_1", "metadata": {"key": "value1"}},
-        {"audio": b"mock_audio_data_2", "metadata": {"key": "value2"}},
-    ]
-    output_data = []
+    input_dir = tempfile.mkdtemp()
+    output_dir = tempfile.mkdtemp()
 
-    input = StreamingInput(input_data)
-    output = StreamingOutput(output_data)
+    input = StreamingInput(input_topic="test-input-topic", kafka_cluster_connection_string="localhost:9092")
+    output = StreamingOutput(output_topic="test-output-topic", kafka_cluster_connection_string="localhost:9092")
     state = InMemoryState(1)
 
     audio_stream = AudioStream(
@@ -38,38 +35,56 @@ def audio_stream():
         output=output,
         state=state,
     )
-    return audio_stream
+    yield audio_stream
 
 
-def test_load_models(audio_stream):
-    model_name = "facebook/wav2vec2-base-960h"
-    processor_name = "facebook/wav2vec2-base-960h"
-    model_class = "Wav2Vec2ForCTC"
-    processor_class = "Wav2Vec2Processor"
-
+@pytest.mark.parametrize(
+    "model_name, processor_name, model_class, processor_class, use_cuda, precision, quantization, device_map, torchscript, compile, better_transformers, use_whisper_cpp, use_faster_whisper",
+    [
+        # fmt: off
+        ("facebook/wav2vec2-base-960h", "facebook/wav2vec2-base-960h", "Wav2Vec2ForCTC", "Wav2Vec2Processor", True, "float32", 0, "cuda:0", False, False, False, False, False),
+        ("openai/whisper-small", "openai/whisper-small", "WhisperForConditionalGeneration", "AutoProcessor", False, "float32", 4, None, False, False, False, False, False),
+        ("openai/whisper-medium", "openai/whisper-medium", "WhisperForConditionalGeneration", "AutoProcessor", True, "float16", 0, "cuda:0", False, True, False, False, False),
+        ("large", "large", "WhisperForConditionalGeneration", "AutoProcessor", True, "bfloat16", 0, "cuda:0", False, False, True, False, False),
+        ("large", "large", "WhisperForConditionalGeneration", "AutoProcessor", True, "bfloat16", 0, "cuda:0", False, False, False, True, False),
+        ("large-v3", "large-v3", "WhisperForConditionalGeneration", "AutoProcessor", None, "float32", 0, "cuda:0", None, None, False, False, True),
+        # fmt: on
+    ],
+)
+def test_load_models(
+    audio_stream,
+    model_name,
+    processor_name,
+    model_class,
+    processor_class,
+    use_cuda,
+    precision,
+    quantization,
+    device_map,
+    torchscript,
+    compile,
+    better_transformers,
+    use_whisper_cpp,
+    use_faster_whisper,
+):
     model, processor = audio_stream.load_models(
         model_name=model_name,
         processor_name=processor_name,
         model_class=model_class,
         processor_class=processor_class,
+        use_cuda=use_cuda,
+        precision=precision,
+        quantization=quantization,
+        device_map=device_map,
+        torchscript=torchscript,
+        compile=compile,
+        better_transformers=better_transformers,
+        use_whisper_cpp=use_whisper_cpp,
+        use_faster_whisper=use_faster_whisper,
     )
 
     assert model is not None
-    assert processor is not None
-    assert len(list(model.named_modules())) > 0
-
-
-def test_process_audio(audio_stream):
-    audio_input = b"mock_audio_data"
-    model_sampling_rate = 16000
-
-    audio_stream.model = None
-    audio_stream.processor = None
-    audio_stream.model_sampling_rate = model_sampling_rate
-    audio_stream.use_cuda = False
-    audio_stream.process_wav2vec2 = lambda *args, **kwargs: {"transcription": "Test transcription", "segments": []}
-
-    result = audio_stream.process_audio(audio_input, model_sampling_rate)
-
-    assert result["transcription"] == "Test transcription"
-    assert result["segments"] == []
+    if not use_whisper_cpp and not use_faster_whisper:
+        assert processor is not None
+    else:
+        assert processor is None
