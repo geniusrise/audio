@@ -51,8 +51,8 @@ def s2t_inference():
     "model_name, model_class, processor_class, use_cuda, precision, quantization, device_map, torchscript, compile, use_whisper_cpp, use_faster_whisper",
     [
         # fmt: off
-        ("openai/whisper-small", "WhisperForConditionalGeneration", "AutoProcessor", True, "float32", 0, "cuda:0", False, False, False, False),
-        ("openai/whisper-medium", "WhisperForConditionalGeneration", "AutoProcessor", True, "float16", 0, "cuda:0", False, True, False, False),
+        ("small", "WhisperForConditionalGeneration", "AutoProcessor", True, "float32", 0, "cuda:0", False, False, False, True),
+        ("medium", "WhisperForConditionalGeneration", "AutoProcessor", True, "float16", 0, "cuda:0", False, False, False, True),
         ("large", "WhisperForConditionalGeneration", "AutoProcessor", True, "bfloat16", 0, "cuda:0", False, False, False, True),
         # fmt: on
     ],
