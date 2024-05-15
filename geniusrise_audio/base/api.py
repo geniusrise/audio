@@ -77,7 +77,7 @@ class AudioAPI(AudioBulk):
         super().__init__(input=input, output=output, state=state)
         self.log = setup_logger(self)
 
-    def validate_password(self, realm, username, password):
+    def __validate_password(self, realm, username, password):
         """
         Validate the username and password against expected values.
 
@@ -238,7 +238,7 @@ class AudioAPI(AudioBulk):
                     "tools.sequential_unlocker.on": True,
                     "tools.auth_basic.on": True,
                     "tools.auth_basic.realm": "geniusrise",
-                    "tools.auth_basic.checkpassword": self.validate_password,
+                    "tools.auth_basic.checkpassword": self.__validate_password,
                     "tools.CORS.on": True,
                 }
             }

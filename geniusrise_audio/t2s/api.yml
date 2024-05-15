@@ -43,6 +43,7 @@ paths:
                 properties:
                   audio_file:
                     type: string
+                    format: base64
                     description: Base64 encoded audio file content.
                     example: "UklGRk5RAABXQVZFZm10IBAAAAABAAEAIl..."
                   input:
@@ -81,6 +82,7 @@ paths:
                 properties:
                   audio_file:
                     type: string
+                    format: base64
                     description: Base64 encoded audio data.
                     example: "UklGRk5RAABXQVZFZm10IBAAAAABAAEAIl..."
                   input:
